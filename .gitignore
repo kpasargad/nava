@@ -1,0 +1,13 @@
+bin/
+obj/
+.local/
+Data/
+dist/
+Tests/bin/
+Tests/obj/
+*.user
+artifacts/
+release/
+portable/
+*.pdb
+.vs/
