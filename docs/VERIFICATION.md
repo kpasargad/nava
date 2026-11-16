@@ -1,6 +1,15 @@
 # Release verification
 
-Nava 1.0.2 targets Windows 10/11 x64 and builds with .NET 10. Distribution packages include the desktop runtime and do not require a separately installed .NET runtime.
+Nava 1.0.3 targets Windows 10/11 x64 and builds with .NET 10. Distribution packages include the desktop runtime and do not require a separately installed .NET runtime.
+
+## 1.0.3 shell visibility
+
+Overlay, history/settings, and speaker-name windows use `ShowInTaskbar=false`
+and native `WS_EX_TOOLWINDOW` without `WS_EX_APPWINDOW`. The policy remains in
+place when WPF updates extended styles. It preserves input activation and
+transparency. Nava owns file/confirmation dialogs, and opening the workspace
+from its tray or character restores it after minimization. The Win32 behavior is
+documented in [Microsoft's extended window styles](https://learn.microsoft.com/en-us/windows/win32/winmsg/extended-window-styles).
 
 ## 1.0.2 pointer fix
 

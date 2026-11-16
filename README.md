@@ -8,7 +8,9 @@
 
 ## نصب
 
-از [آخرین نسخه](https://github.com/kpasargad/nava/releases/latest)، فایل `Nava-Setup-1.0.2-win-x64.exe` را دریافت و اجرا کنید. نصب برای حساب فعلی انجام می‌شود و به دسترسی مدیر یا نصب جداگانهٔ .NET نیاز ندارد. برنامه برای Windows 10/11، ۶۴ بیتی است.
+از [آخرین نسخه](https://github.com/kpasargad/nava/releases/latest)، فایل `Nava-Setup-1.0.3-win-x64.exe` را دریافت و اجرا کنید. نصب برای حساب فعلی انجام می‌شود و به دسترسی مدیر یا نصب جداگانهٔ .NET نیاز ندارد. برنامه برای Windows 10/11، ۶۴ بیتی است.
+
+پنجرهٔ شناور، یادداشت‌ها، تنظیمات و نام‌گذاری گوینده‌ها در Alt+Tab و نوار وظیفه ظاهر نمی‌شوند؛ از شخصیت کوچک یا آیکن کنار ساعت بازشان کنید.
 
 نسخهٔ ۱.۰.۲ کلیک و جابه‌جایی شخصیت کوچک با ماوس را برای هر ده شخصیت اصلاح می‌کند.
 
@@ -67,7 +69,7 @@ dotnet run --project Tests/Nava.Tests.csproj -c Release --no-build
 برای ساخت نصب‌کننده، [Inno Setup 7 یا 6.3+](https://jrsoftware.org/inno-setup/downloads) را نصب و اجرا کنید:
 
 ```powershell
-.\scripts\package.ps1 -Version 1.0.2 -IsccPath 'C:\path\to\ISCC.exe'
+.\scripts\package.ps1 -Version 1.0.3 -IsccPath 'C:\path\to\ISCC.exe'
 ```
 
 این دستور publish مستقل از Runtime را در پوشهٔ تازه می‌سازد، فایل‌های مجاز را جدا می‌کند و نصب‌کننده، Portable ZIP و SHA-256 را در `artifacts/release` قرار می‌دهد. از `dist/Data` یا تنظیمات محلی بسته نمی‌سازد. مجوزهای Runtime و اعلان‌های وابستگی‌ها، با نسخهٔ دقیق موجود در متادیتای restore و publish، در `LICENSE.txt` و `ThirdPartyNotices.txt` قرار می‌گیرند؛ نیازی به مسیر شخصی یا نسخهٔ ثابت در اسکریپت نیست.

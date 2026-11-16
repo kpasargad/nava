@@ -32,7 +32,7 @@ public partial class App : Application
         bool settings=e.Args.Contains("--settings",StringComparer.OrdinalIgnoreCase),history=e.Args.Contains("--history",StringComparer.OrdinalIgnoreCase);
         if(!first) { (settings?_settingsSignal:history?_historySignal:_activation).Set(); Shutdown(); return; }
         ShutdownMode=ShutdownMode.OnExplicitShutdown;
-        DispatcherUnhandledException+=(_,args)=> { args.Handled=true; MessageBox.Show("نوا به مشکلی برخورد کرد. ضبط یا فایل‌های ذخیره‌شده را از تاریخچه بررسی کنید.\n"+SafeMessage(args.Exception),"نوا",MessageBoxButton.OK,MessageBoxImage.Warning); };
+        DispatcherUnhandledException+=(_,args)=> { args.Handled=true; ShowError("نوا به مشکلی برخورد کرد. ضبط یا فایل‌های ذخیره‌شده را از تاریخچه بررسی کنید.\n"+SafeMessage(args.Exception),MessageBoxImage.Warning); };
         try
         {
             _controller=new AppController(); _controller.Initialize();
@@ -43,7 +43,13 @@ public partial class App : Application
             _shutdownSignal=new EventWaitHandle(false,EventResetMode.AutoReset,@"Local\Nava.Desktop.Quit.v1");
             _shutdownWait=ThreadPool.RegisterWaitForSingleObject(_shutdownSignal,(_,__)=>Dispatcher.BeginInvoke(()=>_controller?.Quit()),null,Timeout.Infinite,false);
         }
-        catch(Exception ex) { MessageBox.Show("نوا اجرا نشد.\n"+SafeMessage(ex),"نوا",MessageBoxButton.OK,MessageBoxImage.Error); Shutdown(1); }
+        catch(Exception ex) { ShowError("نوا اجرا نشد.\n"+SafeMessage(ex),MessageBoxImage.Error); Shutdown(1); }
+    }
+    private void ShowError(string text,MessageBoxImage image)
+    {
+        var owner=Windows.OfType<Window>().FirstOrDefault(window=>window.IsActive)??MainWindow;
+        if(owner!=null) MessageBox.Show(owner,text,"نوا",MessageBoxButton.OK,image);
+        else MessageBox.Show(text,"نوا",MessageBoxButton.OK,image);
     }
     private static string SafeMessage(Exception e) => e is IOException or UnauthorizedAccessException ? "پوشهٔ برنامه قابل نوشتن نیست. آن را به پوشه‌ای قابل نوشتن منتقل کنید." : "برنامه را دوباره اجرا کنید؛ اگر مشکل باقی ماند، تنظیمات را بررسی کنید.";
     protected override void OnExit(ExitEventArgs e) { _wait?.Unregister(null); _shutdownWait?.Unregister(null); _settingsWait?.Unregister(null); _historyWait?.Unregister(null); _controller?.Dispose(); _activation?.Dispose(); _shutdownSignal?.Dispose(); _settingsSignal?.Dispose(); _historySignal?.Dispose(); if(_mutex!=null) { try { _mutex.ReleaseMutex(); } catch(ApplicationException) { } _mutex.Dispose(); } base.OnExit(e); }

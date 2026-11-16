@@ -2,7 +2,7 @@
 param(
     [Alias('AppVersion')]
     [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.2',
+    [string]$Version = '1.0.3',
     [string]$Publisher = 'Kourosh Soleimani',
     [string]$RepoUrl = 'https://github.com/kpasargad/nava',
     [string]$IsccPath = '',

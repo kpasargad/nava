@@ -7,6 +7,13 @@ using System.Text.RegularExpressions;
 using Nava.Core;
 using Nava.Services;
 
+if (args.Length > 0 && args[0] == "--inspect-shell")
+{
+    if(args.Length!=2 || !int.TryParse(args[1],out int inspectedPid)) { Console.WriteLine("FAIL use --inspect-shell with a Nava process ID"); return 2; }
+    return Nava.Tests.ShellWindowInspector.Run(inspectedPid);
+}
+if (args.Length > 0 && args[0] == "--shell-window-smoke")
+    return Nava.Tests.ShellWindowSmoke.Run(args.Length > 1 ? args[1] : Directory.GetCurrentDirectory());
 if (args.Length > 0 && args[0] == "--overlay-pointer")
     return Nava.Tests.OverlayPointerSmoke.Run(args.Length > 1 ? args[1] : Directory.GetCurrentDirectory());
 if (args.Length > 0 && args[0] == "--visual-smoke")
@@ -217,6 +224,7 @@ try
     Test("controller persistence failures never retain capture or lose recoverable audio", () => Nava.Tests.ControllerFailureRegression.RunAsync(Fresh("controller-failures")).GetAwaiter().GetResult());
     Test("realtime disposal cancels active send and waiters without semaphore races", () => Nava.Tests.RealtimeRaceRegression.DisposeCancelsActiveSendAndWaitersAsync().GetAwaiter().GetResult());
     Test("realtime disposal cancels speech pacing before sending queued audio", () => Nava.Tests.RealtimeRaceRegression.DisposeCancelsPacingDelayAsync().GetAwaiter().GetResult());
+    Test("Alt+Tab exclusion preserves layered rendering activation and unrelated native flags", () => Nava.Tests.ShellWindowSmoke.VerifyStyleTransform());
 }
 finally
 {

@@ -18,3 +18,7 @@ jobs:
         run: dotnet build Tests/Nava.Tests.csproj -c Release
       - name: Regression checks
         run: dotnet run --project Tests/Nava.Tests.csproj -c Release --no-build
+      - name: Detached window and character checks
+        run: dotnet run --project Tests/Nava.Tests.csproj -c Release --no-build -- --visual-smoke "$env:RUNNER_TEMP\nava-previews"
+      - name: Native Alt+Tab window policy
+        run: dotnet run --project Tests/Nava.Tests.csproj -c Release --no-build -- --shell-window-smoke .

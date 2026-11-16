@@ -1,5 +1,16 @@
 # Nava verification
 
+Native shell-policy checks create only synthetic Nava windows, verify all native
+tool-window flags through show/hide/restore, and exercise workspace reopening:
+
+```powershell
+dotnet run --project Tests/Nava.Tests.csproj -c Release -- --shell-window-smoke .
+dotnet run --project Tests/Nava.Tests.csproj -c Release -- --inspect-shell <Nava-PID>
+```
+
+The installed-process inspector is read-only: it checks visible Nava HWND flags
+without reading titles, transcript text, screenshots, or sending any input.
+
 The mini-button WPF regression checks center and corner input paths, full target
 pixel coverage, and click routing for all ten character choices. It uses detached
 controls and does not claim a physical mouse check. For an optional visible

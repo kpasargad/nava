@@ -13,6 +13,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Nava.Core;
+using Nava.Services;
 
 namespace Nava.Views;
 
@@ -34,6 +35,7 @@ public partial class WorkspaceWindow : Window
     public WorkspaceWindow(AppController controller)
     {
         this.controller = controller; InitializeComponent(); DataContext = controller;
+        ShellWindowPolicy.Attach(this);
         pushToTalk=new PushToTalkGesture(this,controller,RecordButton,WelcomeRecordButton);
         ready = true; controller.PropertyChanged += ControllerChanged; controller.Records.CollectionChanged += RecordsChanged;
         Closing += OnClosing;
@@ -237,7 +239,8 @@ public partial class WorkspaceWindow : Window
         var record = controller.SelectedRecord; if (record == null) return;
         var speakers = record.Segments.Select(s => s.Speaker).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
         if (speakers.Count == 0) { MessageBox.Show(this,"این یادداشت هنوز گویندهٔ مشخصی ندارد.","نام گوینده‌ها",MessageBoxButton.OK,MessageBoxImage.Information); return; }
-        var dialog = new Window { Owner=this, Title="نام گوینده‌ها", Width=380, SizeToContent=SizeToContent.Height, MaxHeight=620, WindowStartupLocation=WindowStartupLocation.CenterOwner, ResizeMode=ResizeMode.NoResize, FlowDirection=FlowDirection.RightToLeft, Background=(Brush)FindResource("Ink"), Foreground=(Brush)FindResource("Paper") };
+        var dialog = new Window { Owner=this, Title="نام گوینده‌ها", ShowInTaskbar=false, Width=380, SizeToContent=SizeToContent.Height, MaxHeight=620, WindowStartupLocation=WindowStartupLocation.CenterOwner, ResizeMode=ResizeMode.NoResize, FlowDirection=FlowDirection.RightToLeft, Background=(Brush)FindResource("Ink"), Foreground=(Brush)FindResource("Paper") };
+        ShellWindowPolicy.Attach(dialog);
         var stack = new StackPanel { Margin=new Thickness(22) }; stack.Children.Add(new TextBlock { Text="هر صدا، یک نام", FontSize=20, Margin=new Thickness(0,0,0,16) });
         var entries = new Dictionary<string,TextBox>();
         foreach (var speaker in speakers) { stack.Children.Add(new TextBlock { Text="گویندهٔ " + speaker, Margin=new Thickness(0,10,0,6) }); var entry=new TextBox { Text=record.SpeakerNames.TryGetValue(speaker,out var name)?name:"", MaxLength=80 }; stack.Children.Add(entry); entries[speaker]=entry; }

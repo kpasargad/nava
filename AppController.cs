@@ -327,7 +327,7 @@ public sealed class AppController : Observable, IDisposable
     {
         if(IsBusy || IsRecording || AnalysisBusy) return;
         var dialog=new OpenFileDialog { Title="انتخاب فایل صوتی یا ویدیو",Filter="صوت و ویدیو|*.wav;*.m4a;*.mp3;*.mp4;*.ogg;*.webm;*.flac;*.aac;*.opus|همهٔ فایل‌ها|*.*" };
-        if(dialog.ShowDialog()!=true) return;
+        if(dialog.ShowDialog(DialogOwner)!=true) return;
         var record=new TranscriptRecord { Title=Path.GetFileNameWithoutExtension(dialog.FileName),AudioPath=dialog.FileName,Status="failed" };
         Records.Insert(0,record); SelectedRecord=record; Store.Save(record); OpenWorkspace(); await RetrySelectedAsync();
     }
@@ -405,7 +405,7 @@ public sealed class AppController : Observable, IDisposable
         var ext=format.ToLowerInvariant() is "srt"?"srt":format.ToLowerInvariant() is "json"?"json":"txt";
         var safeTitle=string.Concat(SelectedRecord.Title.Where(c=>!Path.GetInvalidFileNameChars().Contains(c)));
         var dialog=new SaveFileDialog { Title="ذخیرهٔ متن",FileName=safeTitle,DefaultExt="."+ext,Filter=ext.ToUpperInvariant()+"|*."+ext };
-        if(dialog.ShowDialog()!=true) return;
+        if(dialog.ShowDialog(DialogOwner)!=true) return;
         var content=ext=="srt"?LocalStore.ToSrt(SelectedRecord):ext=="json"?JsonSerializer.Serialize(SelectedRecord,new JsonSerializerOptions { WriteIndented=true }):SelectedRecord.Text;
         File.WriteAllText(dialog.FileName,content,new UTF8Encoding(true)); Hint="فایل ذخیره شد";
     }
@@ -444,13 +444,19 @@ public sealed class AppController : Observable, IDisposable
         try { using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20)); bool ok=await Client.HealthAsync(timeout.Token); ConnectionLabel=ok?"سرویس متصل است":"سرویس آماده نیست"; }
         catch(Exception e) { ConnectionLabel="سرویس در دسترس نیست"; if(_workspace?.IsVisible==true) ErrorMessage=Friendly(e); }
     }
-    public void OpenWorkspace(string tab="history") { if(_workspace==null) { _workspace=new WorkspaceWindow(this); _workspace.Closed+=(_,__)=>_workspace=null; } _workspace.ShowTab(tab); _workspace.Show(); _workspace.Activate(); }
+    private Window? DialogOwner=>_workspace?.IsVisible==true?_workspace:_overlay;
+    public void OpenWorkspace(string tab="history") { if(_workspace==null) { _workspace=new WorkspaceWindow(this); _workspace.Closed+=(_,__)=>_workspace=null; } _workspace.ShowTab(tab); if(_workspace.WindowState==WindowState.Minimized) _workspace.WindowState=WindowState.Normal; _workspace.Show(); _workspace.Activate(); }
     public void ShowOverlay() { _overlay?.Show(); _overlay?.Expand(); }
     public void HideOverlay() { _overlay?.Collapse(); }
     public void SaveOverlayPosition(double left,double top) { Settings.OverlayLeft=left; Settings.OverlayTop=top; try { Store.SaveSettings(Settings); } catch { } }
     public void Quit()
     {
-        if(IsRecording && MessageBox.Show("ضبط متوقف می‌شود و صدا برای بازیابی در تاریخچه می‌ماند. خارج شوم؟","خروج از نوا",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)!=MessageBoxResult.Yes) return;
+        if(IsRecording)
+        {
+            const string prompt="ضبط متوقف می‌شود و صدا برای بازیابی در تاریخچه می‌ماند. خارج شوم؟";
+            var answer=DialogOwner is Window owner?MessageBox.Show(owner,prompt,"خروج از نوا",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No):MessageBox.Show(prompt,"خروج از نوا",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No);
+            if(answer!=MessageBoxResult.Yes) return;
+        }
         _workspace?.ForceClose(); Application.Current.Shutdown();
     }
     private static void UI(Action action) { if(Application.Current.Dispatcher.CheckAccess()) action(); else Application.Current.Dispatcher.BeginInvoke(action); }

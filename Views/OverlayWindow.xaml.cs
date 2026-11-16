@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Windows.Interop;
+using Nava.Services;
 
 namespace Nava.Views;
 
@@ -33,6 +34,7 @@ public partial class OverlayWindow : Window
     public OverlayWindow(AppController controller)
     {
         InitializeComponent(); this.controller=controller; DataContext=controller;
+        ShellWindowPolicy.Attach(this);
         MiniDock.ToolTip=new ToolTip { Content=miniTip };
         pushToTalk=new PushToTalkGesture(this,controller,RecordButton);
         controller.PropertyChanged+=Changed;

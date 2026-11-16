@@ -56,7 +56,7 @@ public static class OverlayPointerSmoke
                 application=new PointerApplication { ShutdownMode=ShutdownMode.OnExplicitShutdown };
                 InitializeResources(application,root);
                 controller=new AppController(); // Enumerates device names; never calls Initialize or recording.
-                overlay=new OverlayWindow(controller) { ShowInTaskbar=true,Title="Nava pointer verification" };
+                overlay=new OverlayWindow(controller) { ShowInTaskbar=false,Title="Nava pointer verification" };
                 overlay.Closed+=(_,_)=> { fixtureClosed=true; timer?.Stop(); WriteState(true); application.Shutdown(); };
                 application.MainWindow=overlay;
                 overlay.Show(); overlay.RestorePosition(300,300);

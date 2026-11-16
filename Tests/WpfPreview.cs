@@ -43,6 +43,8 @@ public static class WpfPreview
                 controller.Records.Add(new TranscriptRecord { Title="Product stand-up", CreatedAt=new DateTime(2026,11,13,9,40,0), Text="We discussed the next release, customer feedback and the first usability session.", DurationMs=97000 });
                 overlay = new OverlayWindow(controller);
                 workspace = new WorkspaceWindow(controller);
+                if(overlay.ShowInTaskbar || workspace.ShowInTaskbar) throw new InvalidOperationException("A Nava main window is still enabled for the taskbar/Alt+Tab list.");
+                if(!overlay.IsEnabled || !workspace.IsEnabled) throw new InvalidOperationException("Shell visibility policy disabled window interaction.");
                 VerifyCoalescedTranscriptUpdate(overlay,controller);
                 var hosts = new Dictionary<Window,ContentControl>();
 
