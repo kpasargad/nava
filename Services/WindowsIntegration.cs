@@ -75,6 +75,7 @@ public sealed class GlobalHotkey : IDisposable
     private void Watchdog(object? sender,EventArgs args)
     {
         if(_disposed || _registered==null) return;
+        if(_hold.IsHeld && !IsInputDesktopAvailable()) { ReleaseHeld(); return; }
         bool asyncDown=IsKeyDown(_registered.Value.Key);
         if(_hold.IsHeld && asyncDown) _observedAsyncPrimaryDown=true;
         // Suppressed keys can be absent from Windows' asynchronous state. Trust
@@ -82,6 +83,19 @@ public sealed class GlobalHotkey : IDisposable
         bool lostPrimaryUp=_observedAsyncPrimaryDown && !asyncDown;
         Publish(_hold.Poll(!lostPrimaryUp,Modifiers()));
         if(lostPrimaryUp) _observedAsyncPrimaryDown=false;
+    }
+    public void ReleaseHeld()
+    {
+        if (_disposed) return;
+        if (!_source.Dispatcher.CheckAccess()) { _source.Dispatcher.BeginInvoke(new Action(ReleaseHeld)); return; }
+        _observedAsyncPrimaryDown=false;
+        Publish(_hold.Release());
+    }
+    private static bool IsInputDesktopAvailable()
+    {
+        var desktop=OpenInputDesktop(0,false,1);
+        if (desktop==IntPtr.Zero) return false;
+        CloseDesktop(desktop); return true;
     }
     private void Publish(HotkeyTransition transition)
     {
@@ -118,6 +132,8 @@ public sealed class GlobalHotkey : IDisposable
     [DllImport("user32.dll")] private static extern bool UnhookWindowsHookEx(IntPtr hook);
     [DllImport("user32.dll")] private static extern IntPtr CallNextHookEx(IntPtr hook,int code,IntPtr message,IntPtr data);
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
+    [DllImport("user32.dll",SetLastError=true)] private static extern IntPtr OpenInputDesktop(uint flags,bool inherit,uint desiredAccess);
+    [DllImport("user32.dll")] private static extern bool CloseDesktop(IntPtr desktop);
     [DllImport("kernel32.dll",CharSet=CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string? module);
     [DllImport("user32.dll",SetLastError=true)] private static extern bool RegisterHotKey(IntPtr hwnd,int id,uint modifiers,uint key);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hwnd,int id);
@@ -167,6 +183,7 @@ public sealed class HotkeyHoldState
         return default;
     }
     public void Reset() { IsHeld=false; _ownsPrimary=false; }
+    public HotkeyTransition Release() { bool released=IsHeld; Reset(); return new(false,false,released); }
 }
 
 public readonly record struct HotkeyTransition(bool Suppress,bool Pressed,bool Released);
@@ -174,16 +191,25 @@ public readonly record struct HotkeyTransition(bool Suppress,bool Pressed,bool R
 public static class WindowsIntegration
 {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")] private static extern uint SendInput(uint count,Input[] inputs,int size);
     [StructLayout(LayoutKind.Sequential)] private struct Input { public uint Type; public InputUnion Union; }
     [StructLayout(LayoutKind.Explicit)] private struct InputUnion { [FieldOffset(0)] public KeyboardInput Keyboard; [FieldOffset(0)] public MouseInput Mouse; }
     [StructLayout(LayoutKind.Sequential)] private struct KeyboardInput { public ushort Key,Scan; public uint Flags,Time; public UIntPtr ExtraInfo; }
     [StructLayout(LayoutKind.Sequential)] private struct MouseInput { public int X,Y; public uint Data,Flags,Time; public UIntPtr ExtraInfo; }
-    public static bool Paste(IntPtr target)
+    public static bool IsSafePasteState(IntPtr target,IntPtr foreground,bool isValidWindow,bool modifierDown)
+        => target!=IntPtr.Zero && isValidWindow && foreground==target && !modifierDown;
+    public static bool Paste(IntPtr target,string? expectedText=null)
     {
-        if(target==IntPtr.Zero || !IsWindow(target) || !SetForegroundWindow(target) || GetForegroundWindow()!=target) return false;
+        bool held=false;
+        foreach(int key in new[] { 0x10,0x11,0x12,0x5B,0x5C,0x56 }) if((GetAsyncKeyState(key)&0x8000)!=0) { held=true; break; }
+        if(!IsSafePasteState(target,GetForegroundWindow(),IsWindow(target),held)) return false;
+        if(expectedText!=null)
+        {
+            try { if(!System.Windows.Clipboard.ContainsText() || !string.Equals(System.Windows.Clipboard.GetText(),expectedText,StringComparison.Ordinal)) return false; }
+            catch { return false; }
+        }
         var input=new[] { Key(0x11,false),Key(0x56,false),Key(0x56,true),Key(0x11,true) };
         return SendInput(4,input,Marshal.SizeOf<Input>())==4;
     }

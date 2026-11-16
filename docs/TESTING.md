@@ -1,5 +1,17 @@
 # Nava verification
 
+The mini-button WPF regression checks center and corner input paths, full target
+pixel coverage, and click routing for all ten character choices. It uses detached
+controls and does not claim a physical mouse check. For an optional visible
+fixture with isolated settings and no recording or network activity, run:
+
+```powershell
+dotnet run --project Tests/Nava.Tests.csproj -c Release -- --overlay-pointer .
+```
+
+The fixture exits after two minutes and writes geometry/expanded-state metadata
+to `.local/pointer-smoke-state.json`.
+
 The regression runner uses only .NET libraries and the app project. It does not
 record a microphone, upload user audio, log credentials, or need a package feed.
 
@@ -69,6 +81,46 @@ Covered behavior:
   and verify HTTP authentication errors never trigger proxy retry. These tests
   use placeholder credentials and synthetic bytes only.
 
+The 1.0.1 failure regressions inject locked temporary history and settings files,
+fake audio capture, and synthetic completion. They check that a failed initial
+save never leaves capture open, cancel and completion failures clear recording
+and busy state, recoverable audio survives a failed save, and an unreadable
+pending record does not prevent startup. Settings-write failure must preserve
+the previous credentials and endpoint. Null history fields are normalized before
+rendering or export. Ordinary tests also check that WAV recovery leaves unrelated
+or differently sampled audio unchanged, and automatic paste requires the original
+foreground window with released modifiers.
+
+The detached WPF smoke includes behavior assertions in addition to images:
+duration text updates when capture finishes, realtime property notifications
+share one presentation frame, and a layout update cannot reset a window's position
+while it is being dragged. These checks exercise own controls, not physical mouse
+movement or monitor switching.
+
+An explicit local microphone smoke is available separately:
+
+```powershell
+dotnet run --project Tests/Nava.Tests.csproj -c Release -- --native-capture .
+```
+
+It captures two short 450 ms local recordings, checks PCM/header/sample counts and
+stop timing, and deletes its own temporary audio. It never uploads, plays back,
+or prints captured audio. Running it requires a microphone and is not part of
+ordinary tests or CI. A passing capture check does not establish transcription
+quality, physical shortcut behavior, or microphone permission UX.
+
+For native UI checks, the installed app supports direct navigation without
+launching a second instance:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Nava\Nava.exe" --settings
+& "$env:LOCALAPPDATA\Programs\Nava\Nava.exe" --history
+```
+
+Verify each command also works with an already running app. `--settings` must open
+settings; `--history` must open notes. These commands do not themselves validate
+microphone or input behavior.
+
 Manual native UI checks should verify holding NumLock starts one recording and
 releasing it stops capture, holding a shortcut does not retrigger it, NumLock's
 existing toggle state is preserved, a conflicting shortcut preserves the
@@ -76,6 +128,11 @@ previous working shortcut, closing the library keeps the tray app available,
 and exit during recording offers a clear choice. Test a lost network connection,
 cancel, retry, and app restart with pending audio before calling recording
 recovery complete. Test both microphone permissions denied and no input device.
+Also check a held recording across Windows lock/sleep, cancel during connection
+setup and finalization, repeated recordings, clipboard contention, and dragging
+the live panel across monitors with different scaling. Record which native checks
+were actually performed; source fixes and detached snapshots are not evidence
+that these session-dependent paths passed.
 
 Service checks must distinguish a successful health request from a real
 transcription. Verify the complete create/upload/start/status/result sequence

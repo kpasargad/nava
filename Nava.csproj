@@ -12,9 +12,9 @@
     <RootNamespace>Nava</RootNamespace>
     <ApplicationIcon>nava.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>1.0.2</Version>
+    <AssemblyVersion>1.0.2.0</AssemblyVersion>
+    <FileVersion>1.0.2.0</FileVersion>
     <Product>Nava</Product>
     <Description>A quiet push-to-talk transcription companion for Windows.</Description>
     <RepositoryUrl>https://github.com/kpasargad/nava</RepositoryUrl>

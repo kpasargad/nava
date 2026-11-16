@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -31,6 +32,7 @@ public static class WpfPreview
             {
                 Environment.SetEnvironmentVariable("NAVA_DATA_DIR", Path.Combine(output,"wpf-smoke-data",Guid.NewGuid().ToString("N")));
                 app = new App(); app.InitializeComponent();
+                VerifyDurationBindingUpdates();
                 RenderCharacterGallery(Path.Combine(output,"character-gallery.png"));
                 controller = new AppController(); // Enumerates device names only; Initialize() and recording are deliberately never called.
                 controller.Settings.ApiKey = "synthetic-preview-key";
@@ -41,10 +43,12 @@ public static class WpfPreview
                 controller.Records.Add(new TranscriptRecord { Title="Product stand-up", CreatedAt=new DateTime(2026,11,13,9,40,0), Text="We discussed the next release, customer feedback and the first usability session.", DurationMs=97000 });
                 overlay = new OverlayWindow(controller);
                 workspace = new WorkspaceWindow(controller);
+                VerifyCoalescedTranscriptUpdate(overlay,controller);
                 var hosts = new Dictionary<Window,ContentControl>();
 
                 overlay.RestorePosition(-1,-1);
                 Render(overlay,hosts,overlay.Width,overlay.Height,Path.Combine(output,"overlay-preview.png"));
+                MiniDockInputRegression.Verify(overlay,hosts[overlay],Path.Combine(output,"mini-input-regression.json"));
                 Render(overlay,hosts,overlay.Width,overlay.Height,Path.Combine(output,"overlay-mini-preview.png"));
                 overlay.Expand();
                 Render(overlay,hosts,overlay.Width,overlay.Height,Path.Combine(output,"overlay-expanded-preview.png"));
@@ -113,6 +117,44 @@ public static class WpfPreview
         if (failure != null) throw new InvalidOperationException("WPF own-control rendering failed.",failure);
     }
     private static void State(AppController controller,string property,object value) => typeof(AppController).GetProperty(property,BindingFlags.Public|BindingFlags.Instance)!.SetValue(controller,value);
+    private static void VerifyDurationBindingUpdates()
+    {
+        var record=new TranscriptRecord();
+        var label=new TextBlock();
+        BindingOperations.SetBinding(label,TextBlock.TextProperty,new Binding(nameof(TranscriptRecord.DurationLabel)) { Source=record });
+        label.GetBindingExpression(TextBlock.TextProperty)!.UpdateTarget();
+        if(label.Text!="00:00") throw new InvalidOperationException("Duration binding did not initialize.");
+        record.DurationMs=65000;
+        label.Measure(new Size(200,40)); label.Arrange(new Rect(0,0,200,40)); label.UpdateLayout();
+        if(label.Text!="01:05") throw new InvalidOperationException("Recording duration label did not update after capture completed.");
+    }
+    private static void VerifyCoalescedTranscriptUpdate(OverlayWindow overlay,AppController controller)
+    {
+        bool wasExpanded=overlay.IsExpanded;
+        string beforeFinal=controller.FinalText,beforePartial=controller.PartialText,beforeLive=controller.LiveText;
+        bool beforeRecording=controller.IsRecording;
+        var field=typeof(OverlayWindow).GetField("pendingPresentation",BindingFlags.NonPublic|BindingFlags.Instance)!;
+        var flush=typeof(OverlayWindow).GetMethod("FlushPresentationUpdate",BindingFlags.NonPublic|BindingFlags.Instance)!;
+        try
+        {
+            State(controller,nameof(AppController.IsRecording),true);
+            State(controller,nameof(AppController.FinalText),"synthetic final ");
+            object? first=field.GetValue(overlay);
+            State(controller,nameof(AppController.PartialText),"interim");
+            State(controller,nameof(AppController.LiveText),"synthetic final interim");
+            if(first==null || !ReferenceEquals(first,field.GetValue(overlay))) throw new InvalidOperationException("Live properties scheduled duplicate presentation operations.");
+            flush.Invoke(overlay,null);
+            var final=overlay.FindName("FinalLiveRun") as System.Windows.Documents.Run;
+            var partial=overlay.FindName("PartialLiveRun") as System.Windows.Documents.Run;
+            if(final?.Text!="synthetic final " || partial?.Text!="interim") throw new InvalidOperationException("Coalesced presentation lost the latest final/interim text.");
+        }
+        finally
+        {
+            State(controller,nameof(AppController.FinalText),beforeFinal); State(controller,nameof(AppController.PartialText),beforePartial); State(controller,nameof(AppController.LiveText),beforeLive);
+            State(controller,nameof(AppController.IsRecording),beforeRecording); flush.Invoke(overlay,null);
+            if(!wasExpanded) overlay.Collapse();
+        }
+    }
     private static void RenderCharacterGallery(string path)
     {
         var ink=new SolidColorBrush((Color)ColorConverter.ConvertFromString("#181F25"));
@@ -145,6 +187,11 @@ public static class WpfPreview
     }
     private static void Render(Window window,Dictionary<Window,ContentControl> hosts,double width,double? height,string path)
     {
+        if(window is OverlayWindow)
+        {
+            typeof(OverlayWindow).GetMethod("FlushPresentationUpdate",BindingFlags.NonPublic|BindingFlags.Instance)!.Invoke(window,null);
+            width=window.Width; height=window.Height;
+        }
         if (!hosts.TryGetValue(window,out var host))
         {
             if (window.Content is not FrameworkElement root) throw new InvalidOperationException("Own view has no visual content.");

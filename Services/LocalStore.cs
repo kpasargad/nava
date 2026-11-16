@@ -34,25 +34,53 @@ public sealed class LocalStore
                 try { var secrets = JsonSerializer.Deserialize<Dictionary<string,string>>(clear); settings.ApiKey = secrets?.GetValueOrDefault("ApiKey", "") ?? ""; settings.ProxyUrl = secrets?.GetValueOrDefault("ProxyUrl", "") ?? ""; }
                 finally { CryptographicOperations.ZeroMemory(clear); }
             }
-            catch (Exception e) when (e is CryptographicException or FormatException or JsonException or IOException)
+            catch (Exception e) when (e is CryptographicException or FormatException or JsonException or IOException or UnauthorizedAccessException)
             {
                 // Corrupted/copied portable credentials must not prevent launch.
                 settings.ApiKey = ""; settings.ProxyUrl = "";
             }
         }
         settings.CharacterId=CharacterCatalog.Normalize(settings.CharacterId);
+        settings.BaseUrl??=""; settings.ApiKey??=""; settings.ProxyUrl??="";
+        if(string.IsNullOrWhiteSpace(settings.Hotkey)) settings.Hotkey="NumLock";
+        if(!double.IsFinite(settings.OverlayLeft)) settings.OverlayLeft=-1;
+        if(!double.IsFinite(settings.OverlayTop)) settings.OverlayTop=-1;
         return settings;
     }
     public void SaveSettings(AppSettings settings)
     {
+        var credentialPath=Path.Combine(Root,"credentials.bin");
+        var previous=File.Exists(credentialPath)?File.ReadAllText(credentialPath):null;
         var clear = JsonSerializer.SerializeToUtf8Bytes(new { settings.ApiKey, settings.ProxyUrl });
-        try { Atomic(Path.Combine(Root, "credentials.bin"), Convert.ToBase64String(ProtectedData.Protect(clear, null, DataProtectionScope.CurrentUser))); }
+        string encrypted;
+        try { encrypted=Convert.ToBase64String(ProtectedData.Protect(clear,null,DataProtectionScope.CurrentUser)); }
         finally { CryptographicOperations.ZeroMemory(clear); }
         var safe = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
         safe.ApiKey = ""; safe.ProxyUrl = "";
-        Atomic(Path.Combine(Root, "settings.json"), JsonSerializer.Serialize(safe, Json));
+        Atomic(credentialPath,encrypted);
+        try { Atomic(Path.Combine(Root, "settings.json"), JsonSerializer.Serialize(safe, Json)); }
+        catch { if(previous!=null) Atomic(credentialPath,previous); else File.Delete(credentialPath); throw; }
     }
-    public List<TranscriptRecord> LoadRecords() => Directory.EnumerateFiles(Path.Combine(Root, "History"), "*.json").Select(Read<TranscriptRecord>).Where(x => x != null).Cast<TranscriptRecord>().OrderByDescending(x => x.CreatedAt).ToList();
+    public List<TranscriptRecord> LoadRecords()
+    {
+        var records=new List<TranscriptRecord>();
+        foreach(var path in Directory.EnumerateFiles(Path.Combine(Root,"History"),"*.json"))
+        {
+            var record=Read<TranscriptRecord>(path);
+            if(record==null || string.IsNullOrEmpty(record.Id) || SafeId(record.Id)!=record.Id) continue;
+            record.Title??="یادداشت صوتی"; record.Text??=""; record.Status??="failed"; record.ApiKind??="custom";
+            record.Segments??=new(); record.SpeakerNames??=new(); record.Analyses??=new();
+            record.Segments.RemoveAll(x=>x==null);
+            foreach(var segment in record.Segments)
+            {
+                segment.Text??=""; segment.Speaker??=""; segment.Language??="";
+                if(!double.IsFinite(segment.StartMs) || segment.StartMs<0) segment.StartMs=0;
+                if(!double.IsFinite(segment.EndMs) || segment.EndMs<segment.StartMs) segment.EndMs=segment.StartMs;
+            }
+            records.Add(record);
+        }
+        return records.OrderByDescending(x=>x.CreatedAt).ToList();
+    }
     public void Save(TranscriptRecord record) => Atomic(Path.Combine(Root, "History", SafeId(record.Id) + ".json"), JsonSerializer.Serialize(record, Json));
     public void Delete(TranscriptRecord record)
     {
@@ -93,6 +121,11 @@ public sealed class LocalStore
     }
     private static string Stamp(double ms) => TimeSpan.FromMilliseconds(Math.Max(0,ms)).ToString(@"hh\:mm\:ss\,fff");
     private static string SafeId(string id) => new(id.Where(char.IsAsciiLetterOrDigit).ToArray());
-    private static T? Read<T>(string path) { try { return JsonSerializer.Deserialize<T>(File.ReadAllText(path)); } catch (Exception e) when (e is IOException or JsonException) { return default; } }
-    private static void Atomic(string path,string content) { var temp = path + ".tmp"; File.WriteAllText(temp,content, new UTF8Encoding(false)); File.Move(temp,path,true); }
+    private static T? Read<T>(string path) { try { return JsonSerializer.Deserialize<T>(File.ReadAllText(path)); } catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { return default; } }
+    private static void Atomic(string path,string content)
+    {
+        var temp=path+"."+Guid.NewGuid().ToString("N")+".tmp";
+        try { File.WriteAllText(temp,content,new UTF8Encoding(false)); File.Move(temp,path,true); }
+        finally { try { File.Delete(temp); } catch(IOException) { } catch(UnauthorizedAccessException) { } }
+    }
 }

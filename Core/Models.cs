@@ -50,8 +50,10 @@ public sealed class TranscriptRecord : Observable
     public string Title { get => _title; set => Set(ref _title, value); }
     private string _text = "";
     public string Text { get => _text; set { Set(ref _text, value); Raise(nameof(Preview)); } }
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
-    public double DurationMs { get; set; }
+    private DateTime _createdAt=DateTime.Now;
+    public DateTime CreatedAt { get=>_createdAt; set { Set(ref _createdAt,value); Raise(nameof(DateLabel)); } }
+    private double _durationMs;
+    public double DurationMs { get=>_durationMs; set { Set(ref _durationMs,double.IsFinite(value)?Math.Clamp(value,0,TimeSpan.MaxValue.TotalMilliseconds-1000):0); Raise(nameof(DurationLabel)); } }
     public List<TranscriptSegment> Segments { get; set; } = new();
     public Dictionary<string, string> SpeakerNames { get; set; } = new();
     public Dictionary<string, string> Analyses { get; set; } = new();

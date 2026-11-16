@@ -28,6 +28,8 @@ public partial class WorkspaceWindow : Window
     private TranscriptRecord? observedRecord;
     private string? liveRecordId;
     private readonly PushToTalkGesture pushToTalk;
+    private DispatcherOperation? pendingLiveScroll;
+    private bool closed;
     public bool IsCapturingHotkey => HotkeyBox.IsKeyboardFocusWithin;
     public WorkspaceWindow(AppController controller)
     {
@@ -40,7 +42,7 @@ public partial class WorkspaceWindow : Window
     }
     public void ShowTab(string tab) { if (tab == "settings") { HistoryPanel.Visibility = Visibility.Collapsed; SettingsPanel.Visibility = Visibility.Visible; LoadSettings(); } else { SettingsPanel.Visibility = Visibility.Collapsed; HistoryPanel.Visibility = Visibility.Visible; } SetNav(HistoryNav, tab != "settings"); SetNav(SettingsNav, tab == "settings"); }
     public void ForceClose() { allowClose = true; Close(); }
-    private void OnClosing(object? sender, CancelEventArgs e) { if (!allowClose) { e.Cancel = true; controller.SaveRecord(); Hide(); } else { pushToTalk.Dispose(); controller.PropertyChanged -= ControllerChanged; controller.Records.CollectionChanged -= RecordsChanged; if(observedRecord!=null) observedRecord.PropertyChanged-=RecordChanged; } }
+    private void OnClosing(object? sender, CancelEventArgs e) { if (!allowClose) { e.Cancel = true; controller.SaveRecord(); Hide(); } else { closed=true; pendingLiveScroll?.Abort(); pendingLiveScroll=null; pushToTalk.Dispose(); controller.PropertyChanged -= ControllerChanged; controller.Records.CollectionChanged -= RecordsChanged; if(observedRecord!=null) observedRecord.PropertyChanged-=RecordChanged; } }
     private void RecordsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(() => RecordsChanged(sender,e)); return; }
@@ -52,8 +54,10 @@ public partial class WorkspaceWindow : Window
         if (e.PropertyName is nameof(AppController.FinalText) or nameof(AppController.PartialText))
         {
             if(!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(()=>ControllerChanged(sender,e)); return; }
+            if(closed) return;
             WorkspaceLivePlaceholder.Visibility=string.IsNullOrWhiteSpace(controller.FinalText+controller.PartialText)?Visibility.Visible:Visibility.Collapsed;
-            Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=>WorkspaceLiveScroller.ScrollToEnd()));
+            if(IsVisible && WorkspaceLivePanel.Visibility==Visibility.Visible && (pendingLiveScroll==null || pendingLiveScroll.Status!=DispatcherOperationStatus.Pending))
+                pendingLiveScroll=Dispatcher.BeginInvoke(DispatcherPriority.Render,new Action(()=> { pendingLiveScroll=null; if(!closed && IsVisible && WorkspaceLivePanel.Visibility==Visibility.Visible) WorkspaceLiveScroller.ScrollToEnd(); }));
             return;
         }
         if (e.PropertyName is nameof(AppController.Level) or nameof(AppController.TimeLabel) or nameof(AppController.LiveText) or nameof(AppController.Status) or nameof(AppController.Hint) or nameof(AppController.ConnectionLabel) or nameof(AppController.ErrorMessage) or nameof(AppController.HasError) or nameof(AppController.AnalysisText)) return;

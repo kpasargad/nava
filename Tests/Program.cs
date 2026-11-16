@@ -7,6 +7,8 @@ using System.Text.RegularExpressions;
 using Nava.Core;
 using Nava.Services;
 
+if (args.Length > 0 && args[0] == "--overlay-pointer")
+    return Nava.Tests.OverlayPointerSmoke.Run(args.Length > 1 ? args[1] : Directory.GetCurrentDirectory());
 if (args.Length > 0 && args[0] == "--visual-smoke")
 {
     Nava.Tests.WpfPreview.Run(args.Length > 1 ? args[1] : Path.Combine(Directory.GetCurrentDirectory(),".local"));
@@ -15,6 +17,8 @@ if (args.Length > 0 && args[0] == "--visual-smoke")
 }
 if (args.Length > 0 && args[0] == "--controller-live")
     return await Nava.Tests.ControllerLiveSmoke.RunAsync(args.Length > 1 ? args[1] : Directory.GetCurrentDirectory());
+if (args.Length > 0 && args[0] == "--native-capture")
+    return await Nava.Tests.NativeCaptureSmoke.RunAsync(args.Length > 1 ? args[1] : Directory.GetCurrentDirectory());
 if (args.Length > 1 && args[0] == "--check-package")
 {
     Nava.Tests.ReleaseChecks.VerifyCleanPayload(args[1]);
@@ -206,6 +210,13 @@ try
     Test("custom API complete workflow preserves upload credential boundary", () => Nava.Tests.ApiContract.CustomWorkflowAsync(Fresh("custom-contract")).GetAwaiter().GetResult());
     Test("native API fallback selects model and resumes without duplicate upload", () => Nava.Tests.ApiContract.NativeFallbackResumeAsync(Fresh("native-contract")).GetAwaiter().GetResult());
     Test("HTTP authentication errors do not retry through proxy", () => Nava.Tests.ApiContract.HttpErrorsDoNotUseProxyAsync().GetAwaiter().GetResult());
+    Test("failed settings writes preserve previous credentials and endpoint", () => Nava.Tests.ControllerFailureRegression.SettingsWriteFailurePreservesPreviousCredentials(Fresh("settings-rollback")));
+    Test("valid incomplete history JSON recovers safe text and collections", () => Nava.Tests.ControllerFailureRegression.NullHistoryFieldsRecover(Fresh("history-null-fields")));
+    Test("audio recovery preserves extended differently sampled and unrelated files", () => Nava.Tests.NativeSafetyRegression.WaveRecoveryPreservesUnrelatedAudio(Fresh("safe-wave-recovery")));
+    Test("automatic paste requires unchanged focus and released modifiers", () => Nava.Tests.NativeSafetyRegression.PasteRequiresOriginalFocusAndReleasedModifiers());
+    Test("controller persistence failures never retain capture or lose recoverable audio", () => Nava.Tests.ControllerFailureRegression.RunAsync(Fresh("controller-failures")).GetAwaiter().GetResult());
+    Test("realtime disposal cancels active send and waiters without semaphore races", () => Nava.Tests.RealtimeRaceRegression.DisposeCancelsActiveSendAndWaitersAsync().GetAwaiter().GetResult());
+    Test("realtime disposal cancels speech pacing before sending queued audio", () => Nava.Tests.RealtimeRaceRegression.DisposeCancelsPacingDelayAsync().GetAwaiter().GetResult());
 }
 finally
 {

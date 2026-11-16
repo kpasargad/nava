@@ -2,7 +2,7 @@
 param(
     [Alias('AppVersion')]
     [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.0',
+    [string]$Version = '1.0.2',
     [string]$Publisher = 'Kourosh Soleimani',
     [string]$RepoUrl = 'https://github.com/kpasargad/nava',
     [string]$IsccPath = '',
@@ -115,6 +115,95 @@ foreach ($documentRelativePath in @('SECURITY.md', 'docs\TESTING.md', 'docs\VERI
         [IO.File]::Copy($document, $destination, $true)
     }
 }
+
+# Runtime packs are restore downloads rather than PackageReferences on some SDK
+# versions. Resolve both assets layouts; a reused publish's deps file identifies
+# its exact shipped runtime even if a later framework-dependent build rewrote obj.
+$assetsPath = Join-Path $projectRoot 'obj\project.assets.json'
+if (-not (Test-Path -LiteralPath $assetsPath -PathType Leaf)) {
+    throw 'Runtime notices require obj/project.assets.json from a completed restore.'
+}
+$restoreAssets = [IO.File]::ReadAllText($assetsPath) | ConvertFrom-Json
+$packageFoldersProperty = $restoreAssets.PSObject.Properties['packageFolders']
+if ($null -eq $packageFoldersProperty) { throw 'Restore assets do not declare packageFolders.' }
+$packageFolders = @($packageFoldersProperty.Value.PSObject.Properties.Name)
+$assetRuntimeVersions = @{}
+$publishedRuntimeVersions = @{}
+
+function Add-RuntimeVersion {
+    param([hashtable]$Destination, [string]$PackageId, [string]$PackageVersion)
+    if ($PackageId -notmatch '^Microsoft\.(?:NETCore|WindowsDesktop)\.App\.Runtime\.win-x64$') { return }
+    if ($PackageVersion -match '^\[([^,\]]+),\s*([^\]]+)\]$') {
+        if ($Matches[1] -ne $Matches[2]) { throw "Runtime dependency $PackageId is not resolved to one version." }
+        $PackageVersion = $Matches[1]
+    }
+    elseif ($PackageVersion -match '^\[([^,\]]+)\]$') { $PackageVersion = $Matches[1] }
+    if ($PackageVersion -notmatch '^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
+        throw "Runtime dependency $PackageId has an unsupported resolved version."
+    }
+    if (-not $Destination.ContainsKey($PackageId)) { $Destination[$PackageId] = [Collections.Generic.List[string]]::new() }
+    if (-not $Destination[$PackageId].Contains($PackageVersion)) { $Destination[$PackageId].Add($PackageVersion) }
+}
+
+foreach ($library in $restoreAssets.libraries.PSObject.Properties) {
+    if ($library.Name -match '^(?:runtimepack\.)?(Microsoft\.(?:NETCore|WindowsDesktop)\.App\.Runtime\.win-x64)/([^/]+)$') {
+        Add-RuntimeVersion $assetRuntimeVersions $Matches[1] $Matches[2]
+    }
+}
+foreach ($framework in $restoreAssets.project.frameworks.PSObject.Properties) {
+    $downloadProperty = $framework.Value.PSObject.Properties['downloadDependencies']
+    if ($null -eq $downloadProperty) { continue }
+    foreach ($download in $downloadProperty.Value) {
+        Add-RuntimeVersion $assetRuntimeVersions $download.name $download.version
+    }
+}
+$publishedDependencies = [IO.File]::ReadAllText((Join-Path $sourceDirectory 'Nava.deps.json')) | ConvertFrom-Json
+foreach ($library in $publishedDependencies.libraries.PSObject.Properties) {
+    if ($library.Name -match '^(?:runtimepack\.)?(Microsoft\.(?:NETCore|WindowsDesktop)\.App\.Runtime\.win-x64)/([^/]+)$') {
+        Add-RuntimeVersion $publishedRuntimeVersions $Matches[1] $Matches[2]
+    }
+}
+
+$licenseSections = [Collections.Generic.List[string]]::new()
+$noticeSections = [Collections.Generic.List[string]]::new()
+foreach ($repositoryLicenseName in @('LICENSE', 'LICENSE.txt')) {
+    $repositoryLicensePath = Join-Path $projectRoot $repositoryLicenseName
+    if (Test-Path -LiteralPath $repositoryLicensePath -PathType Leaf) {
+        # LICENSE remains a separate unchanged repository file too. If the repo
+        # intentionally uses LICENSE.txt, retain its contents in the combined file.
+        $licenseSections.Add("Repository license ($repositoryLicenseName)`n`n" + [IO.File]::ReadAllText($repositoryLicensePath).Trim())
+    }
+}
+foreach ($runtimeId in @('Microsoft.NETCore.App.Runtime.win-x64', 'Microsoft.WindowsDesktop.App.Runtime.win-x64')) {
+    $versions = if ($publishedRuntimeVersions.ContainsKey($runtimeId)) { $publishedRuntimeVersions[$runtimeId] } elseif ($assetRuntimeVersions.ContainsKey($runtimeId)) { $assetRuntimeVersions[$runtimeId] } else { $null }
+    if ($null -eq $versions -or @($versions).Count -ne 1) {
+        throw "Cannot identify the exact shipped $runtimeId version from publish/restore metadata."
+    }
+    $runtimeVersion = @($versions)[0]
+    $runtimeDirectory = $null
+    foreach ($packageFolder in $packageFolders) {
+        $candidateDirectory = Join-Path (Join-Path $packageFolder $runtimeId.ToLowerInvariant()) $runtimeVersion.ToLowerInvariant()
+        if (Test-Path -LiteralPath $candidateDirectory -PathType Container) { $runtimeDirectory = $candidateDirectory; break }
+    }
+    if ($null -eq $runtimeDirectory) { throw "Restored runtime pack $runtimeId $runtimeVersion was not found in packageFolders." }
+    $runtimeLicense = $null
+    foreach ($licenseName in @('LICENSE.TXT', 'LICENSE')) {
+        $candidateLicense = Join-Path $runtimeDirectory $licenseName
+        if (Test-Path -LiteralPath $candidateLicense -PathType Leaf) { $runtimeLicense = $candidateLicense; break }
+    }
+    if ($null -eq $runtimeLicense) { throw "Runtime license is missing for $runtimeId $runtimeVersion." }
+    $licenseSections.Add("$runtimeId $runtimeVersion`n`n" + [IO.File]::ReadAllText($runtimeLicense).Trim())
+    $runtimeNotices = Join-Path $runtimeDirectory 'THIRD-PARTY-NOTICES.TXT'
+    if (Test-Path -LiteralPath $runtimeNotices -PathType Leaf) {
+        $noticeSections.Add("$runtimeId $runtimeVersion`n`n" + [IO.File]::ReadAllText($runtimeNotices).Trim())
+    }
+    elseif ($runtimeId -eq 'Microsoft.NETCore.App.Runtime.win-x64') {
+        throw "Third-party notices are missing for $runtimeId $runtimeVersion."
+    }
+}
+$documentSeparator = "`n`n" + ('=' * 72) + "`n`n"
+[IO.File]::WriteAllText((Join-Path $payloadDirectory 'LICENSE.txt'), ($licenseSections -join $documentSeparator) + "`n", [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $payloadDirectory 'ThirdPartyNotices.txt'), ($noticeSections -join $documentSeparator) + "`n", [Text.UTF8Encoding]::new($false))
 
 # Fail without printing the matching material if release text contains a real
 # authorization value, credential-bearing URL, or a private key.

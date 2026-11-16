@@ -18,6 +18,8 @@ public partial class OverlayWindow : Window
     private readonly DispatcherTimer collapseTimer;
     private readonly PushToTalkGesture pushToTalk;
     private readonly TextBlock miniTip=new() { MaxWidth=300, TextWrapping=TextWrapping.Wrap };
+    private DispatcherOperation? pendingPresentation;
+    private bool presentationDirty;
     private double phase, anchorLeft=double.NaN, anchorTop=double.NaN;
     private bool expanded, wasActive, miniPressed, miniDragged, dragging, layingOut, closed;
     private Point miniPressPoint;
@@ -42,7 +44,7 @@ public partial class OverlayWindow : Window
         MouseLeave+=(_,_)=> { RefreshIdleOpacity(); if(expanded && !Activity) ScheduleCollapse(TimeSpan.FromSeconds(3)); };
         PreviewKeyDown+=KeyInteraction;
         DpiChanged+=(_,_)=>LayoutPresentation();
-        Closed+=(_,_)=> { closed=true; pushToTalk.Dispose(); animation.Stop(); collapseTimer.Stop(); controller.PropertyChanged-=Changed; };
+        Closed+=(_,_)=> { closed=true; pendingPresentation?.Abort(); pendingPresentation=null; pushToTalk.Dispose(); animation.Stop(); collapseTimer.Stop(); controller.PropertyChanged-=Changed; };
         Changed(null,new PropertyChangedEventArgs(null));
     }
     public void RestorePosition(double miniLeft,double miniTop)
@@ -73,6 +75,14 @@ public partial class OverlayWindow : Window
         if(e.PropertyName is nameof(AppController.Level) or nameof(AppController.TimeLabel) or nameof(AppController.Status) or nameof(AppController.Hint) or nameof(AppController.ConnectionLabel) or nameof(AppController.AnalysisText)) return;
         if(!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(()=>Changed(sender,e)); return; }
         if(closed) return;
+        if(e.PropertyName is nameof(AppController.LiveText) or nameof(AppController.FinalText) or nameof(AppController.PartialText))
+        {
+            presentationDirty=true;
+            if(pendingPresentation==null || pendingPresentation.Status!=DispatcherOperationStatus.Pending)
+                pendingPresentation=Dispatcher.BeginInvoke(DispatcherPriority.Render,new Action(FlushPresentationUpdate));
+            return;
+        }
+        pendingPresentation?.Abort(); pendingPresentation=null; presentationDirty=false;
         bool active=Activity;
         if(active && !wasActive) Expand(false);
         if(!active && wasActive) { lastKeyboardInteraction=DateTime.MinValue; ScheduleCollapse(TimeSpan.FromSeconds(controller.HasError?8:3)); }
@@ -82,7 +92,6 @@ public partial class OverlayWindow : Window
             lastError=controller.ErrorMessage;
             if(controller.HasError && !active) { Expand(false); ScheduleCollapse(TimeSpan.FromSeconds(8)); }
         }
-        if(e.PropertyName is nameof(AppController.LiveText) or nameof(AppController.FinalText) or nameof(AppController.PartialText)) Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(()=> { if(!closed) LiveScroller.ScrollToEnd(); }));
         MicDot.Visibility=controller.IsRecording?Visibility.Collapsed:Visibility.Visible;
         StopSquare.Visibility=controller.IsRecording?Visibility.Visible:Visibility.Collapsed;
         RecordButton.Background=(Brush)FindResource(controller.IsRecording?"Coral":"Mint");
@@ -95,15 +104,29 @@ public partial class OverlayWindow : Window
         LiveCaption.Text=controller.IsBusy?"نهایی‌سازی واژه‌های آخر":active?"متن زنده":"آخرین نوشته";
         LiveConnection.Text=controller.IsConnecting?"در حال اتصال…":controller.IsLiveConnected?"وصل است • زنده":controller.IsRecording?"در حال ضبط":controller.IsBusy?"نهایی‌سازی…":"آماده";
         LiveIndicator.Fill=(Brush)FindResource(controller.IsLiveConnected?"Mint":"Coral");
-        bool haveTokens=!string.IsNullOrEmpty(controller.FinalText)||!string.IsNullOrEmpty(controller.PartialText);
-        FinalLiveRun.Text=active && haveTokens?controller.FinalText:controller.LiveText;
-        PartialLiveRun.Text=active?controller.PartialText:"";
-        LivePlaceholder.Visibility=string.IsNullOrWhiteSpace(FinalLiveRun.Text+PartialLiveRun.Text)?Visibility.Visible:Visibility.Collapsed;
+        UpdateTranscriptVisuals();
         LivePlaceholder.Text=controller.IsConnecting?"دارم وصل می‌شوم؛ صدایت از همین لحظه ضبط می‌شود.":controller.IsLiveConnected?"گوش می‌کنم… صحبت کن تا همین‌جا بنویسم.":controller.IsRecording?"صدایت ضبط می‌شود؛ منتظر اتصال زنده هستم.":"دارم آخرین کلمه‌ها را نهایی می‌کنم…";
         ReleaseHint.Visibility=controller.IsRecording?Visibility.Visible:Visibility.Collapsed;
         MiniBadge.Visibility=controller.HasError?Visibility.Visible:Visibility.Collapsed;
         miniTip.Text=controller.HasError?controller.ErrorMessage+"\nبرای دیدن جزئیات کلیک کن.":controller.IsRecording?"دارم گوش می‌کنم؛ برای پایان میانبر را رها کن.":"نوا • "+controller.HotkeyLabel+" را نگه دار و صحبت کن.\nکلیک: باز کردن • کشیدن: جابه‌جایی";
         LayoutPresentation(); RefreshTimers(); RefreshIdleOpacity();
+    }
+    private void UpdateTranscriptVisuals()
+    {
+        bool active=Activity;
+        TranscriptPanel.Visibility=active || !string.IsNullOrWhiteSpace(controller.LiveText)?Visibility.Visible:Visibility.Collapsed;
+        bool haveTokens=!string.IsNullOrEmpty(controller.FinalText)||!string.IsNullOrEmpty(controller.PartialText);
+        FinalLiveRun.Text=active && haveTokens?controller.FinalText:controller.LiveText;
+        PartialLiveRun.Text=active?controller.PartialText:"";
+        LivePlaceholder.Visibility=string.IsNullOrWhiteSpace(FinalLiveRun.Text+PartialLiveRun.Text)?Visibility.Visible:Visibility.Collapsed;
+    }
+    private void FlushPresentationUpdate()
+    {
+        var pending=pendingPresentation; pendingPresentation=null;
+        if(pending?.Status==DispatcherOperationStatus.Pending) pending.Abort();
+        if(closed || !presentationDirty) return;
+        presentationDirty=false; UpdateTranscriptVisuals();
+        if(expanded) { LayoutPresentation(); LiveScroller.ScrollToEnd(); }
     }
     private void ScheduleCollapse(TimeSpan delay) { collapseAt=DateTime.UtcNow+delay; RefreshTimers(); }
     private void AutoCollapse(object? sender,EventArgs e)
@@ -152,7 +175,7 @@ public partial class OverlayWindow : Window
     }
     private void LayoutPresentation()
     {
-        if(layingOut || closed) return; layingOut=true;
+        if(layingOut || closed || dragging) return; layingOut=true;
         try
         {
             var work=WorkArea();
@@ -197,7 +220,7 @@ public partial class OverlayWindow : Window
         if(Math.Abs(current.X-miniPressPoint.X)<SystemParameters.MinimumHorizontalDragDistance && Math.Abs(current.Y-miniPressPoint.Y)<SystemParameters.MinimumVerticalDragDistance) return;
         e.Handled=true; miniDragged=true; dragging=true; MiniDock.ReleaseMouseCapture();
         try { DragMove(); SaveDraggedAnchor(); } catch(InvalidOperationException) { }
-        finally { dragging=false; miniPressed=false; }
+        finally { dragging=false; miniPressed=false; LayoutPresentation(); }
     }
     private void MiniMouseUp(object sender,MouseButtonEventArgs e)
     {
@@ -213,7 +236,9 @@ public partial class OverlayWindow : Window
     {
         if(e.LeftButton!=MouseButtonState.Pressed) return;
         for(DependencyObject? node=e.OriginalSource as DependencyObject;node!=null;node=VisualTreeHelper.GetParent(node)) if(node is Button) return;
+        dragging=true;
         try { DragMove(); SaveDraggedAnchor(); } catch(InvalidOperationException) { }
+        finally { dragging=false; LayoutPresentation(); }
     }
     private async void CancelClick(object sender,RoutedEventArgs e) => await controller.CancelAsync();
     private void HistoryClick(object sender,RoutedEventArgs e) => controller.OpenWorkspace();
