@@ -23,10 +23,10 @@ public sealed class GlobalHotkey : IDisposable
     public bool IsHeld => _hold.IsHeld;
     public GlobalHotkey(IntPtr window)
     {
-        _source=HwndSource.FromHwnd(window) ?? throw new ArgumentException("پنجرهٔ میانبر آماده نیست."); _window=window;
+        _source=HwndSource.FromHwnd(window) ?? throw new ArgumentException("میانبر ضبط آماده نشد. نوا را دوباره اجرا کن."); _window=window;
         _keyboardCallback=KeyboardHook;
         _keyboardHook=SetWindowsHookEx(13,_keyboardCallback,GetModuleHandle(null),0);
-        if(_keyboardHook==IntPtr.Zero) throw new InvalidOperationException("دریافت میانبر سراسری ممکن نشد. نوا را دوباره اجرا کن.");
+        if(_keyboardHook==IntPtr.Zero) throw new InvalidOperationException("میانبر ضبط فعال نشد. نوا را دوباره اجرا کن.");
         _source.AddHook(Hook);
         _watchdog=new DispatcherTimer(DispatcherPriority.Input,_source.Dispatcher) { Interval=TimeSpan.FromMilliseconds(60) };
         _watchdog.Tick+=Watchdog; _watchdog.Start();
@@ -34,11 +34,11 @@ public sealed class GlobalHotkey : IDisposable
     public static (uint Modifiers,uint Key) Parse(string text)
     {
         var parts=text.Split('+',StringSplitOptions.TrimEntries|StringSplitOptions.RemoveEmptyEntries);
-        if(parts.Length==0) throw new ArgumentException("یک کلید انتخاب کنید.");
+        if(parts.Length==0) throw new ArgumentException("یک کلید برای میانبر ضبط انتخاب کن.");
         uint mods=0;
-        for(int i=0;i<parts.Length-1;i++) mods|=parts[i].ToLowerInvariant() switch { "ctrl" or "control"=>2u,"alt"=>1u,"shift"=>4u,"win" or "windows"=>8u,_=>throw new ArgumentException("ترکیب میانبر معتبر نیست.") };
-        if(!Enum.TryParse<Key>(parts[^1],true,out var key) || !Enum.IsDefined(key) || key==Key.None || key==Key.F12 || key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin) throw new ArgumentException("این کلید برای میانبر مناسب نیست.");
-        if(mods==0 && key!=Key.NumLock && key!=Key.Scroll && key!=Key.Pause && !(key>=Key.F1 && key<=Key.F24)) throw new ArgumentException("برای کلیدهای معمولی از Ctrl یا Alt هم استفاده کنید.");
+        for(int i=0;i<parts.Length-1;i++) mods|=parts[i].ToLowerInvariant() switch { "ctrl" or "control"=>2u,"alt"=>1u,"shift"=>4u,"win" or "windows"=>8u,_=>throw new ArgumentException("ترکیب میانبر معتبر نیست. کلیدها را دوباره انتخاب کن.") };
+        if(!Enum.TryParse<Key>(parts[^1],true,out var key) || !Enum.IsDefined(key) || key==Key.None || key==Key.F12 || key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin) throw new ArgumentException("این کلید برای میانبر ضبط قابل‌استفاده نیست. کلید دیگری انتخاب کن.");
+        if(mods==0 && key!=Key.NumLock && key!=Key.Scroll && key!=Key.Pause && !(key>=Key.F1 && key<=Key.F24)) throw new ArgumentException("این کلید را با Ctrl یا Alt ترکیب کن.");
         return (mods|0x4000,(uint)KeyInterop.VirtualKeyFromKey(key));
     }
     public void Register(string text)
@@ -46,7 +46,7 @@ public sealed class GlobalHotkey : IDisposable
         ObjectDisposedException.ThrowIf(_disposed,this);
         var (mods,key)=Parse(text); int next=_id+1;
         if(_registered==(mods,key)) return;
-        if(!RegisterHotKey(_window,next,mods,key)) throw new InvalidOperationException("این میانبر در اختیار برنامهٔ دیگری است؛ ترکیب دیگری انتخاب کنید.");
+        if(!RegisterHotKey(_window,next,mods,key)) throw new InvalidOperationException("این میانبر در اختیار برنامهٔ دیگری است. ترکیب دیگری انتخاب کن.");
         UnregisterHotKey(_window,_id); _id=next; _registered=(mods,key); _observedAsyncPrimaryDown=false;
         Publish(_hold.Configure(mods,key));
     }

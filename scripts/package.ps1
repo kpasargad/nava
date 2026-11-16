@@ -2,7 +2,7 @@
 param(
     [Alias('AppVersion')]
     [ValidatePattern('^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$')]
-    [string]$Version = '1.0.3',
+    [string]$Version = '1.0.4',
     [string]$Publisher = 'Kourosh Soleimani',
     [string]$RepoUrl = 'https://github.com/kpasargad/nava',
     [string]$IsccPath = '',
@@ -107,7 +107,7 @@ foreach ($documentName in @('README.md', 'LICENSE', 'LICENSE.txt', 'NOTICE', 'NO
 
 # Keep README-relative release links usable without copying unrelated project
 # documents, diagnostic captures, or future private notes.
-foreach ($documentRelativePath in @('SECURITY.md', 'docs\TESTING.md', 'docs\VERIFICATION.md', 'docs\images\characters.png')) {
+foreach ($documentRelativePath in @('SECURITY.md', 'docs\TESTING.md', 'docs\VERIFICATION.md', 'docs\VOICE.md', 'docs\images\characters.png')) {
     $document = Join-Path $projectRoot $documentRelativePath
     if (Test-Path -LiteralPath $document -PathType Leaf) {
         $destination = Join-Path $payloadDirectory $documentRelativePath

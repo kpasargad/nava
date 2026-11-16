@@ -49,11 +49,11 @@ public sealed class AudioRecorder : IAudioCapture
     }
     public void Start(string path,int deviceId)
     {
-        if (!_stopped.IsSet || _handle != IntPtr.Zero) throw new InvalidOperationException("ضبط قبلی هنوز بسته نشده است.");
+        if (!_stopped.IsSet || _handle != IntPtr.Zero) throw new InvalidOperationException("میکروفن هنوز آمادهٔ ضبط دوباره نیست. کمی صبر کن.");
         _failureReported=0; _callbackFailed=0; _stopRequested=false; _readyBuffers.Clear(); _pendingBuffers.Clear();
         var format = new WaveFormat { FormatTag=1,Channels=1,SamplesPerSec=16000,AvgBytesPerSec=32000,BlockAlign=2,BitsPerSample=16 };
         var error = waveInOpen(out _handle,unchecked((uint)deviceId),ref format,_callback,IntPtr.Zero,0x30000);
-        if (error != 0) throw new InvalidOperationException(error == 4 ? "میکروفن در اختیار برنامهٔ دیگری است. دستگاه دیگری انتخاب کنید." : "میکروفن باز نشد. اتصال و اجازهٔ دسترسی میکروفن را در تنظیمات ویندوز بررسی کنید.");
+        if (error != 0) throw new InvalidOperationException(error == 4 ? "میکروفن در اختیار برنامهٔ دیگری است. در تنظیمات، میکروفن دیگری انتخاب کن." : "میکروفن باز نشد. اتصال و دسترسی میکروفن را در تنظیمات ویندوز بررسی کن.");
         try
         {
             _file = new FileStream(path,FileMode.Create,FileAccess.Write,FileShare.Read); WriteHeader(_file,0); _bytes=0; _active=true;
@@ -61,12 +61,12 @@ public sealed class AudioRecorder : IAudioCapture
             {
                 var data=Marshal.AllocHGlobal(BufferSize); var header=Marshal.AllocHGlobal(Marshal.SizeOf<WaveHeader>());
                 Marshal.StructureToPtr(new WaveHeader { Data=data,BufferLength=BufferSize },header,false); _buffers.Add((header,data));
-                if (waveInPrepareHeader(_handle,header,(uint)Marshal.SizeOf<WaveHeader>()) != 0 || waveInAddBuffer(_handle,header,(uint)Marshal.SizeOf<WaveHeader>()) != 0) throw new InvalidOperationException("آماده‌سازی میکروفن انجام نشد.");
+                if (waveInPrepareHeader(_handle,header,(uint)Marshal.SizeOf<WaveHeader>()) != 0 || waveInAddBuffer(_handle,header,(uint)Marshal.SizeOf<WaveHeader>()) != 0) throw new InvalidOperationException("میکروفن آماده نشد. دوباره امتحان کن.");
                 _pendingBuffers.Add(header);
             }
             _stopped.Reset();
             _worker=new Thread(Pump) { IsBackground=true,Name="Nava audio capture" }; _worker.Start();
-            if (waveInStart(_handle) != 0) throw new InvalidOperationException("شروع ضبط ممکن نشد.");
+            if (waveInStart(_handle) != 0) throw new InvalidOperationException("ضبط شروع نشد. میکروفن را در تنظیمات بررسی کن.");
         }
         catch { Stop(); throw; }
     }
@@ -188,7 +188,7 @@ public sealed class AudioRecorder : IAudioCapture
             _stopped.Reset(); _worker=new Thread(Pump) { IsBackground=true,Name="Nava audio cleanup" }; _worker.Start();
         }
         if (_worker!=Thread.CurrentThread && !_stopped.Wait(TimeSpan.FromSeconds(2)))
-            throw new InvalidOperationException("میکروفن هنوز بسته نشده است. صدا محفوظ است؛ کمی بعد دوباره تلاش کنید.");
+            throw new InvalidOperationException("بستن میکروفن طول کشید. کمی صبر کن و دوباره امتحان کن.");
     }
     public void Dispose() { try { Stop(); } catch { /* Cleanup worker keeps the driver callback alive. */ } }
     private static void WriteHeader(Stream stream,long bytes)

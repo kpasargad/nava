@@ -1,6 +1,16 @@
 # Release verification
 
-Nava 1.0.3 targets Windows 10/11 x64 and builds with .NET 10. Distribution packages include the desktop runtime and do not require a separately installed .NET runtime.
+Nava 1.0.4 targets Windows 10/11 x64 and builds with .NET 10. Distribution packages include the desktop runtime and do not require a separately installed .NET runtime.
+
+## 1.0.4 voice and UX writing
+
+Persian UI copy follows the [Nava voice guide](VOICE.md): calm, clear, warm and
+lightly playful. Recording states, tooltips, settings, analysis actions and error
+messages use consistent singular instructions and specific next steps. Recovery
+copy checks saved-record/audio availability; clipboard feedback distinguishes a
+copy from a paste attempt. Empty transcription does not claim that text was
+saved. Synthetic WPF previews use the same recording-state vocabulary and review
+compact/expanded windows, settings and notes without reading user content.
 
 ## 1.0.3 shell visibility
 

@@ -24,7 +24,7 @@ internal sealed class PushToTalkGesture : IDisposable
             button.PreviewMouseLeftButtonDown+=MouseDown; button.PreviewMouseLeftButtonUp+=MouseUp;
             button.LostMouseCapture+=LostCapture; button.PreviewKeyDown+=KeyDown; button.PreviewKeyUp+=KeyUp;
             button.LostKeyboardFocus+=LostFocus;
-            button.ToolTip="نگه دار و صحبت کن؛ برای پایان رها کن. با کیبورد: Space یا Enter";
+            button.ToolTip="دکمهٔ موس، Space یا Enter را نگه دار و صحبت کن؛ برای پایان رها کن.";
         }
         window.Deactivated+=Deactivated;
     }

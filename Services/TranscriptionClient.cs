@@ -40,7 +40,7 @@ public sealed class TranscriptionClient
     {
         _settings = settings;
         if (!Uri.TryCreate(settings.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https") || !string.IsNullOrEmpty(uri.UserInfo))
-            throw new ServiceException("آدرس سرویس معتبر نیست.");
+            throw new ServiceException("آدرس سرویس معتبر نیست. آن را در تنظیمات اتصال بررسی کن.");
         _baseUri = uri;
     }
 
@@ -56,7 +56,7 @@ public sealed class TranscriptionClient
         string? id = existingRemoteId;
         try
         {
-            if (!File.Exists(path)) throw new ServiceException("فایل صوتی پیدا نشد.");
+            if (!File.Exists(path)) throw new ServiceException("فایل صدا پیدا نشد. فایل را دوباره انتخاب کن.");
             progress?.Report("در حال آماده‌سازی فایل…");
             if (!string.IsNullOrWhiteSpace(id))
             {
@@ -79,7 +79,7 @@ public sealed class TranscriptionClient
                 }, ct);
                 id = Value(Unwrap(created), "id", "transcription_id");
             }
-            if (string.IsNullOrWhiteSpace(id)) throw new ServiceException("سرویس شناسهٔ فایل را برنگرداند.");
+            if (string.IsNullOrWhiteSpace(id)) throw new ServiceException("پاسخ سرویس برای ادامهٔ تبدیل کافی نیست. دوباره امتحان کن.");
             onRemoteCreated?.Invoke(id);
             var mime = Mime(path);
             var upload = Unwrap(await JsonAsync(HttpMethod.Get, $"v1/transcriptions/{Uri.EscapeDataString(id)}/upload-url?content_type={Uri.EscapeDataString(mime)}", null, ct));
@@ -87,10 +87,10 @@ public sealed class TranscriptionClient
             var urlText = Value(upload, "url", "upload_url", "uploadUrl");
             if (TryProperty(upload, "upload", out var inner)) { if (urlText.Length == 0) urlText = Value(inner, "url", "upload_url"); if (objectKey.Length == 0) objectKey = Value(inner, "object_key", "key"); upload = inner; }
             if (!Uri.TryCreate(urlText, UriKind.Absolute, out var uploadUri) || (uploadUri.Scheme != "http" && uploadUri.Scheme != "https") || !string.IsNullOrEmpty(uploadUri.UserInfo))
-                throw new ServiceException("آدرس آپلود معتبر نیست.");
+                throw new ServiceException("سرویس برای دریافت فایل آماده نیست. کمی بعد دوباره امتحان کن.");
             var fields = TryProperty(upload, "fields", out var f) ? f : default;
             if (objectKey.Length == 0 && fields.ValueKind == JsonValueKind.Object) objectKey = Value(fields, "key", "object_key");
-            if (objectKey.Length == 0) throw new ServiceException("سرویس مسیر ذخیرهٔ فایل را برنگرداند.");
+            if (objectKey.Length == 0) throw new ServiceException("آماده‌سازی فایل در سرویس کامل نشد. دوباره امتحان کن.");
             progress?.Report("در حال فرستادن فایل…");
             await UploadAsync(uploadUri, fields, path, mime, ct);
             await JsonAsync(HttpMethod.Post, $"v1/transcriptions/{Uri.EscapeDataString(id)}/async-transcription-bucket", new { object_key = objectKey }, ct);
@@ -103,7 +103,7 @@ public sealed class TranscriptionClient
         }
         catch (ServiceException ex) { ex.RemoteId ??= id; throw; }
         catch (OperationCanceledException) { throw; }
-        catch (Exception) { throw new ServiceException("ارتباط با سرویس انجام نشد. فایل شما برای تلاش دوباره محفوظ است.", remoteId: id); }
+        catch (Exception) { throw new ServiceException("تبدیل فایل کامل نشد. دوباره امتحان کن.", remoteId: id); }
     }
 
     private async Task<TranscriptRecord> NativeTranscribeFileAsync(string path, string name, IProgress<string>? progress, CancellationToken ct, string? existingId, Action<string>? onRemoteCreated)
@@ -111,7 +111,7 @@ public sealed class TranscriptionClient
         string? id = existingId;
         try
         {
-            if (!File.Exists(path)) throw new ServiceException("فایل صوتی پیدا نشد.");
+            if (!File.Exists(path)) throw new ServiceException("فایل صدا پیدا نشد. فایل را دوباره انتخاب کن.");
             if (!string.IsNullOrWhiteSpace(id))
             {
                 try
@@ -124,7 +124,7 @@ public sealed class TranscriptionClient
                 }
                 catch (ServiceException ex) when (ex.StatusCode == 404) { id = null; }
             }
-            progress?.Report("در حال آماده‌سازی تبدیل صدا…");
+            progress?.Report("در حال آماده‌سازی فایل…");
             var model = await SelectModelAsync(false, ct);
             progress?.Report("در حال فرستادن فایل…");
             var fileUri = new Uri(_baseUri, "v1/files");
@@ -142,7 +142,7 @@ public sealed class TranscriptionClient
             if (!response.IsSuccessStatusCode) throw StatusError((int)response.StatusCode);
             using var fileDoc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             var fileId = Value(Unwrap(fileDoc.RootElement), "id", "file_id");
-            if (string.IsNullOrWhiteSpace(fileId)) throw new ServiceException("سرویس شناسهٔ فایل آپلودشده را برنگرداند.");
+            if (string.IsNullOrWhiteSpace(fileId)) throw new ServiceException("پاسخ سرویس برای ادامهٔ تبدیل کافی نیست. دوباره امتحان کن.");
             var created = Unwrap(await JsonAsync(HttpMethod.Post, "v1/transcriptions", new
             {
                 model,
@@ -152,13 +152,13 @@ public sealed class TranscriptionClient
                 enable_language_identification = true
             }, ct));
             id = Value(created, "id", "transcription_id");
-            if (string.IsNullOrWhiteSpace(id)) throw new ServiceException("سرویس شناسهٔ تبدیل صدا را برنگرداند.");
+            if (string.IsNullOrWhiteSpace(id)) throw new ServiceException("پاسخ سرویس برای ادامهٔ تبدیل کافی نیست. دوباره امتحان کن.");
             onRemoteCreated?.Invoke(id);
             return await NativeWaitAsync(id, name, path, progress, ct);
         }
         catch (ServiceException ex) { ex.RemoteId ??= id; throw; }
         catch (OperationCanceledException) { throw; }
-        catch { throw new ServiceException("ارتباط با سرویس انجام نشد. فایل شما برای تلاش دوباره محفوظ است.", remoteId: id); }
+        catch { throw new ServiceException("تبدیل فایل کامل نشد. دوباره امتحان کن.", remoteId: id); }
     }
 
     private async Task<TranscriptRecord> NativeWaitAsync(string id, string name, string path, IProgress<string>? progress, CancellationToken ct)
@@ -169,10 +169,10 @@ public sealed class TranscriptionClient
             var metadata = Unwrap(await JsonAsync(HttpMethod.Get, $"v1/transcriptions/{Uri.EscapeDataString(id)}", null, ct));
             var status = Value(metadata, "status").ToLowerInvariant();
             if (IsCompleted(status)) return await NativeFetchResultAsync(id, name, path, metadata, ct);
-            if (status is "error" or "failed" or "canceled" or "cancelled") throw new ServiceException("سرویس نتوانست فایل را پردازش کند. صدا برای تلاش دوباره محفوظ است.", remoteId: id);
+            if (status is "error" or "failed" or "canceled" or "cancelled") throw new ServiceException("سرویس تبدیل فایل را کامل نکرد. دوباره امتحان کن.", remoteId: id);
             await Task.Delay(TimeSpan.FromSeconds(2), ct);
         }
-        throw new ServiceException("پردازش هنوز کامل نشده. فایل برای تلاش دوباره محفوظ است.", remoteId: id);
+        throw new ServiceException("تبدیل فایل هنوز کامل نشده است. کمی بعد دوباره امتحان کن.", remoteId: id);
     }
 
     private async Task<TranscriptRecord> NativeFetchResultAsync(string id, string name, string path, JsonElement metadata, CancellationToken ct)
@@ -181,7 +181,7 @@ public sealed class TranscriptionClient
         result.RemoteId = id; result.Title = name; result.AudioPath = path; result.ApiKind = "soniox";
         var duration = Number(metadata, "audio_duration_ms", "duration_ms");
         if (duration > 0) result.DurationMs = duration;
-        if (string.IsNullOrWhiteSpace(result.Text)) throw new ServiceException("در این فایل گفتاری تشخیص داده نشد.", remoteId: id);
+        if (string.IsNullOrWhiteSpace(result.Text)) throw new ServiceException("در این فایل گفتاری تشخیص داده نشد. صدای فایل را بررسی کن.", remoteId: id);
         return result;
     }
 
@@ -194,7 +194,7 @@ public sealed class TranscriptionClient
         var array = TryProperty(models, "models", out var list) ? list : models;
         var eligible = array.ValueKind == JsonValueKind.Array ? array.EnumerateArray().Select(x => Value(x, "id", "model")).Where(x => x.StartsWith(prefix, StringComparison.Ordinal) && int.TryParse(x[prefix.Length..], out _)).ToArray() : Array.Empty<string>();
         var selected = eligible.Contains(prefix + "5") ? prefix + "5" : eligible.OrderByDescending(x => int.Parse(x[prefix.Length..], CultureInfo.InvariantCulture)).FirstOrDefault();
-        if (selected == null) throw new ServiceException("مدل سازگار با تبدیل صدا در سرویس پیدا نشد.");
+        if (selected == null) throw new ServiceException("سرویس برای تبدیل صدا آماده نیست. تنظیمات اتصال را بررسی کن.");
         Models[cacheKey] = selected;
         return selected;
     }
@@ -209,16 +209,16 @@ public sealed class TranscriptionClient
             var statusDoc = Unwrap(await JsonAsync(HttpMethod.Get, $"v1/transcriptions/{Uri.EscapeDataString(id)}/async-status", null, ct));
             var status = Value(statusDoc, "status", "state").ToLowerInvariant();
             if (IsCompleted(status)) return await FetchResultAsync(id, name, path, ct);
-            if (status is "failed" or "error" or "cancelled" or "canceled") throw new ServiceException("پردازش فایل در سرویس انجام نشد. می‌توانید دوباره تلاش کنید.", remoteId: id);
+            if (status is "failed" or "error" or "cancelled" or "canceled") throw new ServiceException("سرویس تبدیل فایل را کامل نکرد. دوباره امتحان کن.", remoteId: id);
             await Task.Delay(TimeSpan.FromSeconds(2), ct);
         }
-        throw new ServiceException("پردازش هنوز تمام نشده است. فایل برای تلاش دوباره نگه داشته شد.", remoteId: id);
+        throw new ServiceException("تبدیل فایل هنوز کامل نشده است. کمی بعد دوباره امتحان کن.", remoteId: id);
     }
     private async Task<TranscriptRecord> FetchResultAsync(string id, string name, string path, CancellationToken ct)
     {
         var record = NormalizeTranscript(await JsonAsync(HttpMethod.Get, $"v1/transcriptions/{Uri.EscapeDataString(id)}", null, ct));
         record.RemoteId = id; record.Title = name; record.AudioPath = path;
-        if (string.IsNullOrWhiteSpace(record.Text)) throw new ServiceException("در این فایل گفتاری تشخیص داده نشد.", remoteId: id);
+        if (string.IsNullOrWhiteSpace(record.Text)) throw new ServiceException("در این فایل گفتاری تشخیص داده نشد. صدای فایل را بررسی کن.", remoteId: id);
         return record;
     }
 
@@ -258,7 +258,7 @@ public sealed class TranscriptionClient
         var url = native ? nativeWebsocket.AbsoluteUri : Value(session, "websocket_url", "websocketUrl", "url");
         var apiKey = native ? "" : Value(session, "api_key", "temporary_api_key", "token", "key");
         if (!Uri.TryCreate(url, UriKind.Absolute, out var wsUri) || (wsUri.Scheme != "ws" && wsUri.Scheme != "wss") || !string.IsNullOrEmpty(wsUri.UserInfo) || (!native && apiKey.Length == 0))
-            throw new ServiceException("سرویس اتصال زنده را آماده نکرد. ضبط معمولی در دسترس است.");
+            throw new ServiceException("آماده‌سازی متن زنده انجام نشد. تنظیمات اتصال را بررسی کن.");
         var hasExpiry = DateTimeOffset.TryParse(Value(session, "expires_at"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var expiry);
         LastRealtimeDiagnostics = native
             ? new RealtimeDiagnostics("gateway_header", 0, "", "not_applicable", null, wsUri.Host)
@@ -283,7 +283,7 @@ public sealed class TranscriptionClient
             return new RealtimeSession(socket, onTokens, Value(session, "transcription_id"), native ? "soniox" : "custom", native ? _settings.ApiKey : apiKey);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { socket.Dispose(); throw; }
-        catch { socket.Dispose(); throw new ServiceException("اتصال زنده برقرار نشد. ضبط معمولی ادامه پیدا می‌کند."); }
+        catch { socket.Dispose(); throw new ServiceException("اتصال متن زنده برقرار نشد. تنظیمات اتصال را بررسی کن."); }
     }
 
     private ClientWebSocket NewSocket(bool useProxy, string? authorizationKey = null)
@@ -316,7 +316,7 @@ public sealed class TranscriptionClient
             throw failure;
         }
         try { var bodyText = await response.Content.ReadAsStringAsync(ct); using var json = JsonDocument.Parse(string.IsNullOrWhiteSpace(bodyText) ? "{}" : bodyText); return json.RootElement.Clone(); }
-        catch (JsonException) { throw new ServiceException("پاسخ سرویس قابل خواندن نیست."); }
+        catch (JsonException) { throw new ServiceException("پاسخ سرویس خوانده نشد. دوباره امتحان کن."); }
     }
 
     private async Task UploadAsync(Uri uri, JsonElement fields, string path, string mime, CancellationToken ct)
@@ -334,7 +334,7 @@ public sealed class TranscriptionClient
             // Presigned object storage receives only its own multipart credentials, never the service bearer.
             return request;
         }, uri, TimeSpan.FromMinutes(20), ct, serviceResource: true);
-        if (!response.IsSuccessStatusCode) throw new ServiceException("آپلود فایل انجام نشد. دوباره تلاش کنید.", (int)response.StatusCode);
+        if (!response.IsSuccessStatusCode) throw new ServiceException("فرستادن فایل کامل نشد. اتصال را بررسی کن و دوباره امتحان کن.", (int)response.StatusCode);
     }
 
     private async Task<HttpResponseMessage> SendAsync(Func<HttpRequestMessage> factory, Uri uri, TimeSpan timeout, CancellationToken ct, bool serviceResource = false)
@@ -344,10 +344,10 @@ public sealed class TranscriptionClient
         {
             try { return await AttemptAsync(factory, true, timeout, ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch { throw new ServiceException("اتصال مستقیم و اتصال جایگزین سرویس برقرار نشد."); }
+            catch { throw new ServiceException("اتصال به سرویس برقرار نشد. تنظیمات اتصال را بررسی کن."); }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch (Exception ex) when (IsConnectionFailure(ex)) { throw new ServiceException("ارتباط با سرویس برقرار نشد. اینترنت و آدرس سرویس را بررسی کنید."); }
+        catch (Exception ex) when (IsConnectionFailure(ex)) { throw new ServiceException("اتصال به سرویس برقرار نشد. اینترنت و آدرس سرویس را بررسی کن."); }
     }
 
     private async Task<HttpResponseMessage> AttemptAsync(Func<HttpRequestMessage> factory, bool useProxy, TimeSpan timeout, CancellationToken ct)
@@ -360,7 +360,7 @@ public sealed class TranscriptionClient
 
     private IWebProxy CreateProxy()
     {
-        if (!Uri.TryCreate(_settings.ProxyUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https")) throw new ServiceException("آدرس پروکسی معتبر نیست.");
+        if (!Uri.TryCreate(_settings.ProxyUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https")) throw new ServiceException("آدرس پروکسی معتبر نیست. آن را در تنظیمات اتصال بررسی کن.");
         var proxy = new WebProxy(new UriBuilder(uri) { UserName = "", Password = "" }.Uri);
         if (!string.IsNullOrEmpty(uri.UserInfo))
         {
@@ -373,14 +373,14 @@ public sealed class TranscriptionClient
     private static bool IsConnectionFailure(Exception ex) => ex is HttpRequestException or WebSocketException or OperationCanceledException or IOException;
     private static ServiceException StatusError(int code) => new(code switch
     {
-        401 => "کلید دسترسی پذیرفته نشد. کلید را در تنظیمات بررسی کنید.",
-        403 => "کلید سرویس اجازهٔ این عملیات را ندارد. دسترسی‌های کلید را بررسی کنید.",
-        402 => "اعتبار یا سقف مصرف سرویس کافی نیست. حساب سرویس را بررسی کنید.",
-        400 or 422 => "سرویس ورودی را نپذیرفت. فایل و تنظیمات را بررسی کنید.",
-        404 => "این مورد در سرویس پیدا نشد.",
-        429 => "سرویس شلوغ است. کمی بعد دوباره تلاش کنید.",
-        502 or 503 or 504 => "سرویس پردازش موقتاً در دسترس نیست. فایل شما محفوظ است.",
-        _ => "درخواست انجام نشد. کمی بعد دوباره تلاش کنید."
+        401 => "کلید دسترسی پذیرفته نشد. آن را در تنظیمات اتصال بررسی کن.",
+        403 => "کلید دسترسی مجوز لازم را ندارد. دسترسی‌های آن را بررسی کن.",
+        402 => "اعتبار یا سقف مصرف سرویس کافی نیست. حساب سرویس را بررسی کن.",
+        400 or 422 => "سرویس درخواست را نپذیرفت. اطلاعات واردشده را بررسی کن.",
+        404 => "این مورد در سرویس پیدا نشد. دوباره امتحان کن.",
+        429 => "سرویس شلوغ است. کمی بعد دوباره امتحان کن.",
+        502 or 503 or 504 => "سرویس موقتاً در دسترس نیست. کمی بعد دوباره امتحان کن.",
+        _ => "درخواست کامل نشد. کمی بعد دوباره امتحان کن."
     }, code);
 
     public static string Mime(string path) => Path.GetExtension(path).ToLowerInvariant() switch

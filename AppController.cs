@@ -30,8 +30,8 @@ public sealed class AppController : Observable, IDisposable
     public IReadOnlyList<MicrophoneDevice> Microphones { get; private set; } = AudioRecorder.Devices();
     private TranscriptRecord? _selected;
     public TranscriptRecord? SelectedRecord { get=>_selected; set { if(_selected==value) Raise(nameof(SelectedRecord)); else Set(ref _selected,value); AnalysisText=value?.Analyses.GetValueOrDefault("summarize")??value?.Analyses.Where(x=>x.Key!="original_text").Select(x=>x.Value).FirstOrDefault()??""; Raise(nameof(ServerFeatureNotice)); } }
-    public string ServerFeatureNotice=>SelectedRecord?.ApiKind=="soniox"?"این نسخهٔ سرور، تبدیل گفتار Soniox را دارد؛ تحلیل و مرتب‌سازی متن روی سرور فعال نیست. نام گوینده‌ها روی همین رایانه ذخیره می‌شود.":"";
-    private string _status="نگه دار و صحبت کن",_hint="با رها کردن کلید، ضبط تمام می‌شود",_liveText="",_finalText="",_partialText="",_time="00:00",_connection="در حال بررسی سرویس…",_error="",_analysis="";
+    public string ServerFeatureNotice=>SelectedRecord?.ApiKind=="soniox"?"در این اتصال، خلاصه‌سازی و مرتب‌کردن متن در دسترس نیست. نام گوینده‌ها روی این دستگاه ذخیره می‌شود.":"";
+    private string _status="آماده‌ام",_hint="میانبر را نگه دار و صحبت کن",_liveText="",_finalText="",_partialText="",_time="00:00",_connection="در حال بررسی اتصال…",_error="",_analysis="";
     private bool _recording,_busy,_analysisBusy,_connecting,_liveConnected,_pttRequested,_globalOwnsHold;
     private double _level;
     public string Status { get=>_status; private set=>Set(ref _status,value); }
@@ -88,7 +88,7 @@ public sealed class AppController : Observable, IDisposable
             {
                 record.Status="failed";
                 try { Store.Save(record); }
-                catch(Exception e) when(e is IOException or UnauthorizedAccessException) { ErrorMessage="بعضی یادداشت‌های قبلی قابل ذخیره نیستند؛ دسترسی پوشه را بررسی کن. صدا و متن موجود محفوظ‌اند."; }
+                catch(Exception e) when(e is IOException or UnauthorizedAccessException) { ErrorMessage="بعضی یادداشت‌ها به‌روز نشدند. فضای دیسک و دسترسی به پوشهٔ نوا را بررسی کن."; }
             }
             Records.Add(record);
         }
@@ -105,18 +105,17 @@ public sealed class AppController : Observable, IDisposable
         SystemEvents.PowerModeChanged+=PowerChanged;
         try { _hotkey.Register(Settings.Hotkey); } catch(Exception e) { Fail(e.Message); }
         var menu=new Forms.ContextMenuStrip();
-        menu.Items.Add("نمایش نوا",null,(_,__)=>UI(ShowOverlay));
-        menu.Items.Add("دکمهٔ نگه‌دار و صحبت کن",null,(_,__)=>UI(ShowOverlay));
-        menu.Items.Add("تاریخچه و ابزارها",null,(_,__)=>UI(()=>OpenWorkspace()));
+        menu.Items.Add("باز کردن نوا",null,(_,__)=>UI(ShowOverlay));
+        menu.Items.Add("یادداشت‌ها",null,(_,__)=>UI(()=>OpenWorkspace()));
         menu.Items.Add("تنظیمات",null,(_,__)=>UI(()=>OpenWorkspace("settings")));
-        menu.Items.Add("پنهان کردن روح",null,(_,__)=>UI(()=>_overlay?.Hide()));
+        menu.Items.Add("پنهان کردن نوا",null,(_,__)=>UI(()=>_overlay?.Hide()));
         menu.Items.Add(new Forms.ToolStripSeparator()); menu.Items.Add("خروج",null,(_,__)=>UI(Quit));
         var iconPath=Path.Combine(AppContext.BaseDirectory,"nava.ico");
         _tray=new Forms.NotifyIcon { Text="نوا • "+Settings.Hotkey,Icon=File.Exists(iconPath)?new System.Drawing.Icon(iconPath):System.Drawing.SystemIcons.Information,ContextMenuStrip=menu,Visible=true };
         _tray.DoubleClick+=(_,__)=>UI(()=>OpenWorkspace());
         if(string.IsNullOrWhiteSpace(Settings.BaseUrl) || string.IsNullOrWhiteSpace(Settings.ApiKey))
         {
-            Status="اول اتصال را تنظیم کن"; Hint="آدرس سرویس و کلید را وارد کن"; ConnectionLabel="اتصال تنظیم نشده";
+            Status="اتصال را تنظیم کن"; Hint="آدرس سرویس و کلید دسترسی را وارد کن"; ConnectionLabel="اتصال تنظیم نشده";
             OpenWorkspace("settings");
         }
         else _=TestConnectionAsync();
@@ -135,7 +134,7 @@ public sealed class AppController : Observable, IDisposable
             var draft=_draft;
             await CleanupRecordingAsync();
             if(draft!=null) { draft.Status="failed"; TrySave(draft); }
-            if(e is OperationCanceledException) { Status="لغو شد"; Hint="هر وقت خواستی، دوباره شروع کن"; }
+            if(e is OperationCanceledException) { Status="لغو شد"; Hint="هر وقت آماده بودی، دوباره شروع کن"; }
             else Fail(Friendly(e));
         }
         finally { _transition.Release(); }
@@ -153,7 +152,7 @@ public sealed class AppController : Observable, IDisposable
     public Task ToggleRecordingAsync()=>IsRecording?EndPushToTalkAsync():StartPushToTalkAsync();
     private Task StartRecordingAsync()
     {
-        if(string.IsNullOrWhiteSpace(Settings.ApiKey)) { ErrorMessage="کلید سرویس را در تنظیمات وارد کنید."; OpenWorkspace("settings"); return Task.CompletedTask; }
+        if(string.IsNullOrWhiteSpace(Settings.ApiKey)) { ErrorMessage="برای شروع، کلید دسترسی را در تنظیمات وارد کن."; OpenWorkspace("settings"); return Task.CompletedTask; }
         ErrorMessage=""; LiveText=""; FinalText=""; PartialText=""; AnalysisText=""; TimeLabel="00:00"; _pasteTarget=WindowsIntegration.GetForegroundWindow();
         _operation?.Dispose(); _operation=new(); _streamFailed=false; _streamFailure=null; _realtime=null; _sendTask=null;
         _streamOperation?.Dispose(); _streamOperation=CancellationTokenSource.CreateLinkedTokenSource(_operation.Token);
@@ -164,20 +163,20 @@ public sealed class AppController : Observable, IDisposable
         Store.Save(_draft);
         var captureDraft=_draft;
         _recorder.LevelChanged+=value=>UI(()=> { if(_draft==captureDraft && IsRecording) Level=value; });
-        _recorder.Failed+=()=>UI(async ()=> { if(_draft!=captureDraft) return; await CancelAsync(); Fail("ذخیرهٔ صدا متوقف شد. فضای دیسک و دسترسی پوشه را بررسی کن."); });
+        _recorder.Failed+=()=>UI(async ()=> { if(_draft!=captureDraft) return; await CancelAsync(); Fail("صدا ذخیره نشد. فضای دیسک و دسترسی به پوشهٔ نوا را بررسی کن."); });
         _recorder.DataAvailable+=data=>
         {
             if(_audio!=null && !_audio.Writer.TryWrite(data) && !_streamFailed)
             {
-                _streamFailed=true; _streamFailure=new ServiceException("اتصال زنده بیش از حد طول کشید. صدا برای تلاش دوباره نگه داشته شد.");
-                UI(()=> { IsConnecting=false; IsLiveConnected=false; ErrorMessage=_streamFailure.Message; Hint="صدا محفوظ است؛ کلید را رها کن و اتصال را بررسی کن"; });
+                _streamFailed=true; _streamFailure=new ServiceException("اتصال بیش از حد طول کشید. برای پایان، میانبر یا دکمه را رها کن.");
+                UI(()=> { IsConnecting=false; IsLiveConnected=false; ErrorMessage=_streamFailure.Message; Hint="برای پایان رها کن؛ سپس اتصال را بررسی کن"; });
             }
         };
         _audio=Channel.CreateBounded<byte[]>(new BoundedChannelOptions(150) { SingleReader=true,SingleWriter=true,FullMode=BoundedChannelFullMode.Wait });
         try { _recorder.Start(_draft.AudioPath,Settings.MicrophoneId); }
         catch { _recorder.Dispose(); _recorder=null; _audio=null; throw; }
         Records.Insert(0,_draft); SelectedRecord=_draft;
-        IsRecording=true; IsConnecting=true; IsLiveConnected=false; Status="دارم وصل می‌شوم…"; Hint="صحبت کن؛ برای پایان کلید را رها کن";
+        IsRecording=true; IsConnecting=true; IsLiveConnected=false; Status="در حال اتصال…"; Hint="صدایت ضبط می‌شود؛ برای پایان رها کن";
         _started=DateTime.UtcNow; _clock.Start(); _overlay?.Show(); _overlay?.Expand(false); if(Settings.Sounds) AudioCues.PlayStarted();
         _connectTask=ConnectRealtimeAsync(_audio!,_streamOperation.Token);
         return Task.CompletedTask;
@@ -195,18 +194,18 @@ public sealed class AppController : Observable, IDisposable
                 LiveText=FinalText+PartialText;
                 draft.Text=FinalText; draft.Segments=segments.ToList();
                 IsConnecting=false; IsLiveConnected=true;
-                if(IsRecording) Status="دارم می‌نویسم…";
+                if(IsRecording) Status="دارم می‌نویسم";
             }),ct);
             ct.ThrowIfCancellationRequested(); _realtime=session;
-            IsConnecting=false; IsLiveConnected=true; if(IsRecording) { Status="دارم گوش می‌کنم…"; Hint="متن همین‌جا ظاهر می‌شود؛ کلید را نگه دار"; }
+            IsConnecting=false; IsLiveConnected=true; if(IsRecording) { Status="گوش می‌کنم"; Hint="برای پایان، میانبر یا دکمه را رها کن"; }
             _sendTask=SendAudioAsync(session,channel.Reader,ct);
         }
-        catch(Exception e) { if(session!=null) await session.DisposeAsync(); if(!ct.IsCancellationRequested) { _streamFailed=true; _streamFailure=e; UI(()=> { IsConnecting=false; IsLiveConnected=false; ErrorMessage=Friendly(e); Hint="اتصال زنده برقرار نشد؛ صدا برای تلاش دوباره محفوظ است"; }); } }
+        catch(Exception e) { if(session!=null) await session.DisposeAsync(); if(!ct.IsCancellationRequested) { _streamFailed=true; _streamFailure=e; UI(()=> { IsConnecting=false; IsLiveConnected=false; ErrorMessage=Friendly(e); Hint="برای پایان رها کن؛ از یادداشت‌ها دوباره امتحان کن"; }); } }
     }
     private async Task SendAudioAsync(RealtimeSession session,ChannelReader<byte[]> reader,CancellationToken ct)
     {
         try { await foreach(var frame in reader.ReadAllAsync(ct)) await session.SendAudioAsync(frame,ct); }
-        catch(Exception e) { if(!ct.IsCancellationRequested) { _streamFailed=true; _streamFailure=e; UI(()=> { IsLiveConnected=false; ErrorMessage=Friendly(e); Hint="ارتباط زنده قطع شد؛ متن و صدا محفوظ‌اند"; }); } }
+        catch(Exception e) { if(!ct.IsCancellationRequested) { _streamFailed=true; _streamFailure=e; UI(()=> { IsLiveConnected=false; ErrorMessage=Friendly(e); Hint="برای پایان رها کن؛ از یادداشت‌ها دوباره امتحان کن"; }); } }
     }
     private async Task StopRecordingAsync()
     {
@@ -216,20 +215,20 @@ public sealed class AppController : Observable, IDisposable
         {
             await StopCaptureAsync(); Level=0; if(Settings.Sounds) AudioCues.PlayStopped();
             _audio?.Writer.TryComplete(); draft.Status="processing"; Store.Save(draft);
-            Status="دارم واژه‌های آخر را نهایی می‌کنم…"; Hint="متن گفته‌شده همین‌جا آماده است";
+            Status="در حال تکمیل متن…"; Hint="کمی صبر کن تا متن کامل شود";
             var ct=_operation!.Token;
-            if(draft.DurationMs<350) { Store.Delete(draft); Records.Remove(draft); SelectedRecord=Records.FirstOrDefault(); Status="ضبط خیلی کوتاه بود"; Hint="کمی بیشتر صحبت کن"; return; }
+            if(draft.DurationMs<350) { Store.Delete(draft); Records.Remove(draft); SelectedRecord=Records.FirstOrDefault(); Status="ضبط خیلی کوتاه بود"; Hint="میانبر را نگه دار و کمی بیشتر صحبت کن"; return; }
             if(_connectTask!=null) await _connectTask.WaitAsync(TimeSpan.FromSeconds(18),ct);
             if(_sendTask!=null) await _sendTask.WaitAsync(TimeSpan.FromSeconds(15),ct);
-            if(_streamFailed || _realtime==null) throw _streamFailure??new ServiceException("اتصال زنده کامل نشد. صدا در تاریخچه محفوظ است.");
+            if(_streamFailed || _realtime==null) throw _streamFailure??new ServiceException("اتصال زنده کامل نشد. تنظیمات اتصال را بررسی کن.");
             var result=await _realtime.FinishAsync(ct).WaitAsync(TimeSpan.FromSeconds(12),ct);
             ct.ThrowIfCancellationRequested();
             _streamOperation?.Cancel();
             ApplyResult(draft,result);
             Complete(draft,true);
         }
-        catch(OperationCanceledException) { draft.Status="failed"; TrySave(draft); Status="پردازش متوقف شد"; Hint="فایل صدا در تاریخچه است؛ می‌توانی دوباره تلاش کنی"; }
-        catch(Exception e) { if(e is ServiceException se && se.RemoteId!=null) draft.RemoteId=se.RemoteId; draft.Status="failed"; TrySave(draft); Fail(Friendly(e)); Hint="صدا و متن موجود در تاریخچه‌اند؛ تلاش دوباره را بزن"; }
+        catch(OperationCanceledException) { draft.Status="failed"; bool saved=TrySave(draft); Status="تبدیل متوقف شد"; Hint=RecoveryHint(draft,saved); }
+        catch(Exception e) { if(e is ServiceException se && se.RemoteId!=null) draft.RemoteId=se.RemoteId; draft.Status="failed"; bool saved=TrySave(draft); Fail(saved?Friendly(e):ErrorMessage); Hint=RecoveryHint(draft,saved); }
         finally { await CleanupRecordingAsync(); }
     }
     private static void ApplyResult(TranscriptRecord target,TranscriptRecord result)
@@ -246,15 +245,16 @@ public sealed class AppController : Observable, IDisposable
         {
             var audio=draft.AudioPath;
             try { Store.DeleteOwnedAudio(audio); draft.AudioPath=null; Store.Save(draft); }
-            catch(Exception e) when(e is IOException or UnauthorizedAccessException) { draft.AudioPath=audio; ErrorMessage="متن ذخیره شد؛ پاک‌سازی فایل صدا انجام نشد."; }
+            catch(Exception e) when(e is IOException or UnauthorizedAccessException) { draft.AudioPath=audio; ErrorMessage="متن ذخیره شد؛ پاک‌سازی فایل صدا کامل نشد."; }
         }
         SelectedRecord=draft; LiveText=draft.Text; FinalText=draft.Text; PartialText="";
-        Status=string.IsNullOrWhiteSpace(draft.Text)?"گفتاری تشخیص داده نشد":"نوشتم؛ آماده‌ست!";
-        Hint="متن در تاریخچه ذخیره شد";
+        bool hasText=!string.IsNullOrWhiteSpace(draft.Text);
+        Status=hasText?"متن آماده است":"گفتاری تشخیص داده نشد";
+        Hint=hasText?"در یادداشت‌ها ذخیره شد":"میکروفن را بررسی کن و دوباره صحبت کن";
         if((Settings.AutoCopy || allowPaste && Settings.AutoPaste) && !string.IsNullOrWhiteSpace(draft.Text) && CopyText(draft.Text))
         {
-            Hint="متن کپی شد • در هر برنامه‌ای بچسبان";
-            if(allowPaste && Settings.AutoPaste) Hint=WindowsIntegration.Paste(_pasteTarget,draft.Text)?"متن در برنامه چسبانده شد":"متن کپی شد؛ با Ctrl+V بچسبان";
+            Hint="متن کپی شد؛ با Ctrl+V بچسبان";
+            if(allowPaste && Settings.AutoPaste) Hint=WindowsIntegration.Paste(_pasteTarget,draft.Text)?"متن کپی شد؛ چسباندن را در برنامه بررسی کن":"متن کپی شد؛ با Ctrl+V بچسبان";
         }
     }
     public async Task CancelAsync()
@@ -273,7 +273,7 @@ public sealed class AppController : Observable, IDisposable
                     await StopCaptureAsync();
                     if(Settings.Sounds) AudioCues.PlayStopped();
                     if(draft!=null) { draft.Status="failed"; Store.Save(draft); }
-                    Status="ضبط متوقف شد"; Hint="صدا برای تلاش دوباره در تاریخچه نگه داشته شد";
+                    Status="ضبط متوقف شد"; Hint="برای تبدیل دوباره، این ضبط را در یادداشت‌ها باز کن";
                 }
                 catch(Exception e) { Fail(Friendly(e)); }
                 finally { await CleanupRecordingAsync(); }
@@ -299,10 +299,16 @@ public sealed class AppController : Observable, IDisposable
         _connectTask=null; _sendTask=null; _audio=null; _draft=null;
         IsRecording=false; IsBusy=false; IsConnecting=false; IsLiveConnected=false; Level=0;
     }
-    private void TrySave(TranscriptRecord record)
+    private bool TrySave(TranscriptRecord record)
     {
-        try { Store.Save(record); }
-        catch(Exception e) when(e is IOException or UnauthorizedAccessException) { ErrorMessage="ذخیرهٔ یادداشت انجام نشد. صدا را نگه داشته‌ام؛ دسترسی پوشه و فضای دیسک را بررسی کن."; }
+        try { Store.Save(record); return true; }
+        catch(Exception e) when(e is IOException or UnauthorizedAccessException) { ErrorMessage="یادداشت ذخیره نشد. فضای دیسک و دسترسی به پوشهٔ نوا را بررسی کن."; return false; }
+    }
+    private static string RecoveryHint(TranscriptRecord record,bool saved)
+    {
+        if(!saved) return "";
+        if(record.AudioPath is string audio && File.Exists(audio)) return "برای تبدیل دوباره، این ضبط را در یادداشت‌ها باز کن";
+        return string.IsNullOrWhiteSpace(record.Text)?"فایل صدا در دسترس نیست؛ دوباره ضبط کن":"متن موجود را می‌توانی از یادداشت‌ها کپی کنی";
     }
     private void SessionChanged(object sender,SessionSwitchEventArgs e)
     {
@@ -316,9 +322,9 @@ public sealed class AppController : Observable, IDisposable
     public async Task FormatSelectedAsync()
     {
         if(SelectedRecord==null || IsBusy || IsRecording || AnalysisBusy || string.IsNullOrWhiteSpace(SelectedRecord.Text)) return;
-        if(SelectedRecord.ApiKind=="soniox") { ErrorMessage="مسیر مرتب‌سازی متن روی نسخهٔ فعلی سرور فعال نیست."; return; }
+        if(SelectedRecord.ApiKind=="soniox") { ErrorMessage="مرتب‌کردن متن در این اتصال در دسترس نیست."; return; }
         var record=SelectedRecord; AnalysisBusy=true; _operation?.Dispose(); _operation=new();
-        try { var formatted=await Client.SmartFormatAsync(record.Text,Math.Max(1000,record.DurationMs),_operation.Token); record.Analyses["original_text"]=record.Text; record.Text=formatted; Store.Save(record); Hint="متن مرتب شد؛ نسخهٔ قبلی در خروجی JSON محفوظ است"; }
+        try { var formatted=await Client.SmartFormatAsync(record.Text,Math.Max(1000,record.DurationMs),_operation.Token); record.Analyses["original_text"]=record.Text; record.Text=formatted; Store.Save(record); Hint="متن مرتب شد"; }
         catch(OperationCanceledException) { Hint="مرتب‌سازی متوقف شد"; }
         catch(Exception e) { Fail(Friendly(e)); }
         finally { AnalysisBusy=false; }
@@ -326,7 +332,7 @@ public sealed class AppController : Observable, IDisposable
     public async Task ImportFileAsync()
     {
         if(IsBusy || IsRecording || AnalysisBusy) return;
-        var dialog=new OpenFileDialog { Title="انتخاب فایل صوتی یا ویدیو",Filter="صوت و ویدیو|*.wav;*.m4a;*.mp3;*.mp4;*.ogg;*.webm;*.flac;*.aac;*.opus|همهٔ فایل‌ها|*.*" };
+        var dialog=new OpenFileDialog { Title="تبدیل فایل صوتی یا ویدیویی",Filter="صوت و ویدیو|*.wav;*.m4a;*.mp3;*.mp4;*.ogg;*.webm;*.flac;*.aac;*.opus|همهٔ فایل‌ها|*.*" };
         if(dialog.ShowDialog(DialogOwner)!=true) return;
         var record=new TranscriptRecord { Title=Path.GetFileNameWithoutExtension(dialog.FileName),AudioPath=dialog.FileName,Status="failed" };
         Records.Insert(0,record); SelectedRecord=record; Store.Save(record); OpenWorkspace(); await RetrySelectedAsync();
@@ -335,7 +341,7 @@ public sealed class AppController : Observable, IDisposable
     {
         if(IsBusy || IsRecording || AnalysisBusy || SelectedRecord==null) return;
         var record=SelectedRecord;
-        if(record.AudioPath==null || !File.Exists(record.AudioPath)) { Fail("فایل صدا در دسترس نیست. فایل اصلی را دوباره وارد کنید."); return; }
+        if(record.AudioPath==null || !File.Exists(record.AudioPath)) { Fail("فایل صدا پیدا نشد. فایل اصلی را دوباره انتخاب کن."); return; }
         IsBusy=true; ErrorMessage=""; _operation?.Dispose(); _operation=new();
         try
         {
@@ -343,8 +349,8 @@ public sealed class AppController : Observable, IDisposable
             record.Status="processing"; Store.Save(record);
             var result=await Client.TranscribeFileAsync(record.AudioPath,record.Title,new Progress<string>(x=>Status=x),_operation.Token,record.RemoteId,id=> { record.RemoteId=id; Store.Save(record); }); ApplyResult(record,result); Complete(record,false);
         }
-        catch(OperationCanceledException) { record.Status="failed"; Status="پردازش متوقف شد"; TrySave(record); }
-        catch(Exception e) { if(e is ServiceException se && se.RemoteId!=null) record.RemoteId=se.RemoteId; record.Status="failed"; TrySave(record); Fail(Friendly(e)); }
+        catch(OperationCanceledException) { record.Status="failed"; Status="تبدیل متوقف شد"; Hint=RecoveryHint(record,TrySave(record)); }
+        catch(Exception e) { if(e is ServiceException se && se.RemoteId!=null) record.RemoteId=se.RemoteId; record.Status="failed"; bool saved=TrySave(record); Fail(saved?Friendly(e):ErrorMessage); Hint=RecoveryHint(record,saved); }
         finally { IsBusy=false; }
     }
     public async Task AnalyzeSelectedAsync(string action,string? customPrompt)
@@ -354,14 +360,14 @@ public sealed class AppController : Observable, IDisposable
         _operation?.Dispose(); _operation=new();
         try
         {
-            if(record.ApiKind=="soniox") { AnalysisText="نسخهٔ فعلی سرویس شما تبدیل گفتار را پشتیبانی می‌کند، اما مسیر تحلیل /v1/analysis روی آن فعال نیست. پس از استقرار API توضیح‌داده‌شده، خلاصه و فهرست کارها از اینجا اجرا می‌شوند."; return; }
+            if(record.ApiKind=="soniox") { AnalysisText="خلاصه‌سازی و ابزارهای متن در این اتصال در دسترس نیستند. متن را همچنان می‌توانی بخوانی، ویرایش کنی و کپی کنی."; return; }
             if(record.RemoteId==null)
             {
                 // Live sessions may not create a persisted transcription ID. Create a text-backed remote transcript only if retained audio is available.
                 if(record.AudioPath!=null && File.Exists(record.AudioPath)) { var uploaded=await Client.TranscribeFileAsync(record.AudioPath,record.Title,null,_operation.Token); record.RemoteId=uploaded.RemoteId; Store.Save(record); }
-                else { AnalysisText="برای تحلیل سرور، فایل صدا را وارد کن یا «نگهداری صدا» را در تنظیمات روشن کن. این نشست زنده شناسهٔ قابل تحلیل برنگردانده است."; return; }
+                else { AnalysisText="برای تحلیل این یادداشت، فایل صدای آن لازم است. اگر فایل اصلی را داری، دوباره واردش کن."; return; }
             }
-            if(action=="custom" && string.IsNullOrWhiteSpace(customPrompt)) { AnalysisText="درخواست دلخواهت را بنویس."; return; }
+            if(action=="custom" && string.IsNullOrWhiteSpace(customPrompt)) { AnalysisText="بنویس از این متن چه می‌خواهی."; return; }
             var result=await Client.AnalyzeAsync(record.RemoteId!,action,customPrompt,_operation.Token);
             record.Analyses[action]=result; Store.Save(record); if(SelectedRecord==record) AnalysisText=result;
         }
@@ -385,8 +391,8 @@ public sealed class AppController : Observable, IDisposable
         string next=CharacterCatalog.Normalize(id),previous=Settings.CharacterId;
         if(next==previous) return;
         Settings.CharacterId=next;
-        try { Store.SaveSettings(Settings); Raise(nameof(CharacterId)); Raise(nameof(Settings)); Hint="همراه تازه‌ات انتخاب شد"; }
-        catch { Settings.CharacterId=previous; Fail("ذخیرهٔ شخصیت انجام نشد. دسترسی پوشه را بررسی کن."); }
+        try { Store.SaveSettings(Settings); Raise(nameof(CharacterId)); Raise(nameof(Settings)); Hint="چهرهٔ نوا عوض شد"; }
+        catch { Settings.CharacterId=previous; Fail("چهرهٔ تازه ذخیره نشد. فضای دیسک و دسترسی به پوشهٔ نوا را بررسی کن."); }
     }
     public void DeleteSelected()
     {
@@ -396,8 +402,8 @@ public sealed class AppController : Observable, IDisposable
     public void CopySelected() { if(SelectedRecord!=null && CopyText(SelectedRecord.Text)) Hint="متن کپی شد"; }
     public void OpenAudioSelected()
     {
-        if(SelectedRecord?.AudioPath is string p && File.Exists(p)) try { Process.Start(new ProcessStartInfo(p) { UseShellExecute=true }); } catch { Fail("فایل با پخش‌کنندهٔ پیش‌فرض باز نشد."); }
-        else Fail("فایل صدا نگه داشته نشده است. برای ضبط‌های بعدی «نگهداری صدا» را روشن کن.");
+        if(SelectedRecord?.AudioPath is string p && File.Exists(p)) try { Process.Start(new ProcessStartInfo(p) { UseShellExecute=true }); } catch { Fail("فایل صدا باز نشد. پخش‌کنندهٔ پیش‌فرض ویندوز را بررسی کن."); }
+        else Fail("فایل صدا در دسترس نیست. اگر فایل اصلی را داری، دوباره واردش کن.");
     }
     public void ExportSelected(string format)
     {
@@ -411,20 +417,20 @@ public sealed class AppController : Observable, IDisposable
     }
     public async Task<bool> SaveSettingsAsync(AppSettings proposed)
     {
-        if(IsRecording || IsBusy || AnalysisBusy) { Fail("بعد از پایان ضبط یا پردازش، تنظیمات را تغییر بده."); return false; }
+        if(IsRecording || IsBusy || AnalysisBusy) { Fail("صبر کن این کار تمام شود؛ بعد تنظیمات را تغییر بده."); return false; }
         object? previousStartup=null; bool startupChanged=false;
         try
         {
             proposed.CharacterId=CharacterCatalog.Normalize(proposed.CharacterId);
-            if(!Uri.TryCreate(proposed.BaseUrl,UriKind.Absolute,out var uri) || (uri.Scheme!="http" && uri.Scheme!="https") || !string.IsNullOrEmpty(uri.UserInfo)) throw new ArgumentException("آدرس سرویس معتبر نیست.");
-            proposed.ApiKey=(proposed.ApiKey??"").Trim(); if(proposed.ApiKey.Length==0) throw new ArgumentException("کلید سرویس را وارد کن.");
+            if(!Uri.TryCreate(proposed.BaseUrl,UriKind.Absolute,out var uri) || (uri.Scheme!="http" && uri.Scheme!="https") || !string.IsNullOrEmpty(uri.UserInfo)) throw new ArgumentException("آدرس سرویس را با http:// یا https:// وارد کن.");
+            proposed.ApiKey=(proposed.ApiKey??"").Trim(); if(proposed.ApiKey.Length==0) throw new ArgumentException("کلید دسترسی را وارد کن.");
             proposed.BaseUrl=proposed.BaseUrl.Trim().TrimEnd('/');
             if(!string.IsNullOrWhiteSpace(proposed.ProxyUrl) && (!Uri.TryCreate(proposed.ProxyUrl,UriKind.Absolute,out var proxy) || proxy.Scheme!="http")) throw new ArgumentException("آدرس پروکسی باید با http:// شروع شود.");
             if(proposed.Hotkey!=Settings.Hotkey) _hotkey?.Register(proposed.Hotkey);
             if(proposed.StartWithWindows!=Settings.StartWithWindows)
             {
                 using var run=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run",true);
-                if(run==null) throw new IOException("تنظیم شروع خودکار در دسترس نیست.");
+                if(run==null) throw new IOException("اجرای نوا با ویندوز تنظیم نشد. دوباره امتحان کن.");
                 previousStartup=run.GetValue("Nava"); startupChanged=true;
                 if(proposed.StartWithWindows) run.SetValue("Nava","\""+Environment.ProcessPath+"\""); else run.DeleteValue("Nava",false);
             }
@@ -435,14 +441,14 @@ public sealed class AppController : Observable, IDisposable
         {
             try { _hotkey?.Register(Settings.Hotkey); } catch { }
             if(startupChanged) try { using var run=Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run",true); if(previousStartup==null) run?.DeleteValue("Nava",false); else run?.SetValue("Nava",previousStartup); } catch { }
-            Fail(e is ArgumentException or InvalidOperationException?e.Message:"ذخیرهٔ تنظیمات انجام نشد. دسترسی پوشه را بررسی کن."); return false;
+            Fail(e is ArgumentException or InvalidOperationException?e.Message:"تنظیمات ذخیره نشد. دوباره امتحان کن."); return false;
         }
     }
     public async Task TestConnectionAsync()
     {
-        ConnectionLabel="در حال بررسی سرویس…";
-        try { using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20)); bool ok=await Client.HealthAsync(timeout.Token); ConnectionLabel=ok?"سرویس متصل است":"سرویس آماده نیست"; }
-        catch(Exception e) { ConnectionLabel="سرویس در دسترس نیست"; if(_workspace?.IsVisible==true) ErrorMessage=Friendly(e); }
+        ConnectionLabel="در حال بررسی اتصال…";
+        try { using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(20)); bool ok=await Client.HealthAsync(timeout.Token); ConnectionLabel=ok?"سرویس پاسخ می‌دهد":"سرویس آماده نیست"; }
+        catch(Exception e) { ConnectionLabel="اتصال برقرار نشد"; if(_workspace?.IsVisible==true) ErrorMessage=Friendly(e); }
     }
     private Window? DialogOwner=>_workspace?.IsVisible==true?_workspace:_overlay;
     public void OpenWorkspace(string tab="history") { if(_workspace==null) { _workspace=new WorkspaceWindow(this); _workspace.Closed+=(_,__)=>_workspace=null; } _workspace.ShowTab(tab); if(_workspace.WindowState==WindowState.Minimized) _workspace.WindowState=WindowState.Normal; _workspace.Show(); _workspace.Activate(); }
@@ -453,16 +459,24 @@ public sealed class AppController : Observable, IDisposable
     {
         if(IsRecording)
         {
-            const string prompt="ضبط متوقف می‌شود و صدا برای بازیابی در تاریخچه می‌ماند. خارج شوم؟";
+            const string prompt="ضبط را متوقف کنیم و از نوا خارج شویم؟ صدای ضبط‌شده برای تبدیل دوباره نگه داشته می‌شود.";
             var answer=DialogOwner is Window owner?MessageBox.Show(owner,prompt,"خروج از نوا",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No):MessageBox.Show(prompt,"خروج از نوا",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No);
             if(answer!=MessageBoxResult.Yes) return;
         }
         _workspace?.ForceClose(); Application.Current.Shutdown();
     }
     private static void UI(Action action) { if(Application.Current.Dispatcher.CheckAccess()) action(); else Application.Current.Dispatcher.BeginInvoke(action); }
-    private void Fail(string message) { ErrorMessage=message; Status="یک جای کار گیر کرد"; Hint="تنظیمات یا تاریخچه را بررسی کن"; }
-    private static string Friendly(Exception ex) => ex is IOException?"خواندن یا ذخیرهٔ فایل انجام نشد. دسترسی و فضای دیسک را بررسی کن.":ex is UnauthorizedAccessException?"دسترسی به فایل ممکن نیست.":ex is TimeoutException?"پاسخ سرویس طول کشید. صدا محفوظ است؛ دوباره تلاش کن.":ex.Message.Contains("http",StringComparison.OrdinalIgnoreCase)?"ارتباط با سرویس برقرار نشد. تنظیمات اتصال را بررسی کن.":ex.Message;
-    private bool CopyText(string text) { try { Clipboard.SetText(text); return true; } catch { Hint="کپی نشد؛ متن را از تاریخچه کپی کن"; return false; } }
+    private void Fail(string message) { ErrorMessage=message; Status="این مرحله کامل نشد"; Hint=""; }
+    private static string Friendly(Exception ex) => ex switch
+    {
+        IOException=>"فایل باز یا ذخیره نشد. فضای دیسک و دسترسی به فایل را بررسی کن.",
+        UnauthorizedAccessException=>"نوا به این فایل دسترسی ندارد. دسترسی پوشه را بررسی کن.",
+        TimeoutException=>"پاسخ سرویس طول کشید. کمی بعد دوباره امتحان کن.",
+        ServiceException=>ex.Message,
+        _ when ex.Message.Any(c=>c>='\u0600' && c<='\u06ff')=>ex.Message,
+        _=>"این کار کامل نشد. دوباره امتحان کن."
+    };
+    private bool CopyText(string text) { try { Clipboard.SetText(text); return true; } catch { Hint="متن کپی نشد. دوباره «کپی متن» را بزن."; return false; } }
     public void Dispose()
     {
         if(_disposed) return; _disposed=true; _operation?.Cancel(); _streamOperation?.Cancel(); _clock.Stop();

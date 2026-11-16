@@ -72,8 +72,8 @@ public partial class WorkspaceWindow : Window
         if (!ready) return;
         bool occupied = controller.IsBusy || controller.IsRecording || controller.AnalysisBusy;
         bool serverAnalysis = controller.SelectedRecord?.ApiKind != "soniox";
-        EmptyHistory.Visibility = controller.Records.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        RecordButton.Content = controller.IsRecording ? "دارم گوش می‌کنم • رها کن" : controller.AnalysisBusy ? "در حال تحلیل…" : "نگه دار و صحبت کن";
+        RefreshEmptyHistory();
+        RecordButton.Content = controller.IsRecording ? "برای پایان رها کن" : "نگه دار و صحبت کن";
         RecordButton.IsEnabled = !occupied || controller.IsRecording;
         WelcomeRecordButton.IsEnabled = !occupied || controller.IsRecording;
         ImportButton.IsEnabled = !occupied;
@@ -82,9 +82,9 @@ public partial class WorkspaceWindow : Window
         AnalysisAction.IsEnabled = !controller.AnalysisBusy && serverAnalysis;
         CustomPrompt.IsReadOnly = controller.AnalysisBusy || !serverAnalysis;
         CapabilityNotice.Visibility = serverAnalysis ? Visibility.Collapsed : Visibility.Visible;
-        AnalyzeButton.Content = controller.AnalysisBusy ? "در حال آماده‌سازی…" : "انجام بده";
+        AnalyzeButton.Content = controller.AnalysisBusy ? "در حال آماده‌سازی…" : AnalysisActionLabel();
         FormatButton.IsEnabled = !occupied && serverAnalysis && controller.SelectedRecord?.Status == "completed";
-        FormatButton.ToolTip = serverAnalysis ? "مرتب کردن و نشانه‌گذاری متن" : "سرویس فعلی مرتب‌سازی متن را ارائه نمی‌کند";
+        FormatButton.ToolTip = serverAnalysis ? "متن را مرتب و نشانه‌گذاری کن." : "در این نوع اتصال، مرتب‌سازی متن در دسترس نیست.";
         TranscriptEditor.IsReadOnly = controller.AnalysisBusy || controller.SelectedRecord?.Status is "recording" or "processing";
         SpeakersButton.IsEnabled = DeleteButton.IsEnabled = !occupied && controller.SelectedRecord != null;
         SaveSettingsButton.IsEnabled = !savingSettings && !occupied;
@@ -97,7 +97,7 @@ public partial class WorkspaceWindow : Window
         bool live=(controller.IsRecording || controller.IsConnecting || controller.IsBusy) && record?.Id==liveRecordId && liveRecordId!=null;
         WorkspaceLivePanel.Visibility=live?Visibility.Visible:Visibility.Collapsed;
         WorkspaceLivePlaceholder.Visibility=string.IsNullOrWhiteSpace(controller.FinalText+controller.PartialText)?Visibility.Visible:Visibility.Collapsed;
-        WorkspaceLivePlaceholder.Text=controller.IsConnecting?"در حال اتصال زنده… صدایت از همین لحظه ضبط می‌شود.":controller.IsLiveConnected?"گوش می‌کنم… صحبت کن تا همین‌جا بنویسم.":"صدایت ضبط می‌شود؛ منتظر اتصال زنده هستم.";
+        WorkspaceLivePlaceholder.Text=controller.IsBusy?"در حال تکمیل متن…":controller.IsRecording && controller.IsConnecting?"صدایت ضبط می‌شود؛ متن پس از اتصال ظاهر می‌شود.":controller.IsRecording && controller.IsLiveConnected?"گوش می‌کنم؛ صحبت کن.":controller.IsRecording?"صدایت ضبط می‌شود؛ اتصال زنده برقرار نیست.":"میانبر را نگه دار و صحبت کن.";
         TranscriptReader.Visibility=!live && pane=="read"?Visibility.Visible:Visibility.Collapsed;
         TranscriptEditor.Visibility=!live && pane=="edit"?Visibility.Visible:Visibility.Collapsed;
         SegmentsPane.Visibility=!live && pane=="segments"?Visibility.Visible:Visibility.Collapsed;
@@ -177,11 +177,22 @@ public partial class WorkspaceWindow : Window
     }
     private void SearchChanged(object sender, TextChangedEventArgs e)
     {
+        if(SearchPlaceholder!=null) SearchPlaceholder.Visibility=string.IsNullOrEmpty((sender as TextBox)?.Text)?Visibility.Visible:Visibility.Collapsed;
         if (!ready) return;
         string query = SearchBox.Text.Trim();
         var view = CollectionViewSource.GetDefaultView(controller.Records);
         view.Filter = item => item is TranscriptRecord r && (string.IsNullOrEmpty(query) || r.Title.Contains(query,StringComparison.OrdinalIgnoreCase) || r.Text.Contains(query,StringComparison.OrdinalIgnoreCase));
         view.Refresh();
+        RefreshEmptyHistory();
+    }
+    private void RefreshEmptyHistory()
+    {
+        bool firstNote=controller.Records.Count==0;
+        bool noMatches=CollectionViewSource.GetDefaultView(controller.Records).IsEmpty;
+        EmptyHistory.Visibility=noMatches?Visibility.Visible:Visibility.Collapsed;
+        EmptyHistory.Text=firstNote?"هنوز یادداشتی نداری":"یادداشتی پیدا نشد.\nبا واژهٔ دیگری جست‌وجو کن.";
+        WelcomeTitle.Text=firstNote?"از یک جمله شروع کن":noMatches?"یادداشتی پیدا نشد":"یادداشتی را انتخاب کن";
+        WelcomeDescription.Text=firstNote?"فارسی، انگلیسی یا ترکیبی از هر دو صحبت کن؛ نوا هم‌زمان می‌نویسد.":noMatches?"با واژهٔ دیگری جست‌وجو کن یا عبارت جست‌وجو را پاک کن.":"از فهرست کنار صفحه، یادداشتی را برای خواندن یا ویرایش انتخاب کن.";
     }
     private void LoadSettings()
     {
@@ -215,33 +226,33 @@ public partial class WorkspaceWindow : Window
         proposed.LiveTranscription = true; proposed.Diarization = DiarizationCheck.IsChecked == true; proposed.Sounds = SoundsCheck.IsChecked == true;
         proposed.AutoCopy = AutoCopyCheck.IsChecked == true; proposed.AutoPaste = AutoPasteCheck.IsChecked == true; proposed.KeepAudio = KeepAudioCheck.IsChecked == true; proposed.StartWithWindows = StartupCheck.IsChecked == true;
         savingSettings = true; UpdateState();
-        try { bool saved = await controller.SaveSettingsAsync(proposed); SettingsFeedback.Text = saved ? "ذخیره شد ✓" : "تنظیمات را بررسی کن"; }
+        try { bool saved = await controller.SaveSettingsAsync(proposed); SettingsFeedback.Text = saved ? "تنظیمات ذخیره شد" : "تنظیمات ذخیره نشد"; }
         finally { savingSettings = false; UpdateState(); }
     }
     private async void TestConnectionClick(object sender, RoutedEventArgs e) { testingConnection = true; UpdateState(); try { await controller.TestConnectionAsync(); SettingsFeedback.Text = controller.ConnectionLabel; } finally { testingConnection = false; UpdateState(); } }
-    private void HotkeyFocus(object sender, KeyboardFocusChangedEventArgs e) => HotkeyHelp.Text = "حالا میانبر دلخواه را بزن؛ Escape برای انصراف.";
-    private void HotkeyBlur(object sender, KeyboardFocusChangedEventArgs e) => HotkeyHelp.Text = "کلیک کن و کلید دلخواهت را بزن.";
+    private void HotkeyFocus(object sender, KeyboardFocusChangedEventArgs e) => HotkeyHelp.Text = "میانبر دلخواهت را بزن. برای انصراف، Escape را بزن.";
+    private void HotkeyBlur(object sender, KeyboardFocusChangedEventArgs e) => HotkeyHelp.Text = "برای تغییر میانبر اینجا کلیک کن.";
     private void HotkeyKeyDown(object sender, KeyEventArgs e)
     {
         e.Handled = true; var key = e.Key == Key.System ? e.SystemKey : e.Key;
         if (key == Key.Escape) { HotkeyBox.Text = controller.Settings.Hotkey; Keyboard.ClearFocus(); return; }
         if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin) return;
-        if (key == Key.F12) { HotkeyHelp.Text = "F12 برای ویندوز رزرو شده؛ کلید دیگری بزن."; return; }
+        if (key == Key.F12) { HotkeyHelp.Text = "F12 قابل انتخاب نیست؛ کلید دیگری بزن."; return; }
         var pieces = new List<string>(); ModifierKeys modifiers = Keyboard.Modifiers;
         if ((modifiers & ModifierKeys.Control) != 0) pieces.Add("Ctrl");
         if ((modifiers & ModifierKeys.Alt) != 0) pieces.Add("Alt");
         if ((modifiers & ModifierKeys.Shift) != 0) pieces.Add("Shift");
-        if ((modifiers & ModifierKeys.Windows) != 0) { HotkeyHelp.Text = "ترکیب‌های Windows رزرو هستند؛ Ctrl یا Alt را امتحان کن."; return; }
-        pieces.Add(key.ToString()); HotkeyBox.Text = string.Join("+",pieces); HotkeyHelp.Text = "میانبر انتخاب شد؛ تنظیمات را ذخیره کن.";
+        if ((modifiers & ModifierKeys.Windows) != 0) { HotkeyHelp.Text = "ترکیب‌های Windows قابل انتخاب نیستند؛ Ctrl یا Alt را امتحان کن."; return; }
+        pieces.Add(key.ToString()); HotkeyBox.Text = string.Join("+",pieces); HotkeyHelp.Text = "میانبر انتخاب شد. برای اعمال، تنظیمات را ذخیره کن.";
     }
     private async void SpeakersClick(object sender, RoutedEventArgs e)
     {
         var record = controller.SelectedRecord; if (record == null) return;
         var speakers = record.Segments.Select(s => s.Speaker).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
-        if (speakers.Count == 0) { MessageBox.Show(this,"این یادداشت هنوز گویندهٔ مشخصی ندارد.","نام گوینده‌ها",MessageBoxButton.OK,MessageBoxImage.Information); return; }
+        if (speakers.Count == 0) { MessageBox.Show(this,"در این یادداشت گوینده‌ای تشخیص داده نشده است.","نام گوینده‌ها",MessageBoxButton.OK,MessageBoxImage.Information); return; }
         var dialog = new Window { Owner=this, Title="نام گوینده‌ها", ShowInTaskbar=false, Width=380, SizeToContent=SizeToContent.Height, MaxHeight=620, WindowStartupLocation=WindowStartupLocation.CenterOwner, ResizeMode=ResizeMode.NoResize, FlowDirection=FlowDirection.RightToLeft, Background=(Brush)FindResource("Ink"), Foreground=(Brush)FindResource("Paper") };
         ShellWindowPolicy.Attach(dialog);
-        var stack = new StackPanel { Margin=new Thickness(22) }; stack.Children.Add(new TextBlock { Text="هر صدا، یک نام", FontSize=20, Margin=new Thickness(0,0,0,16) });
+        var stack = new StackPanel { Margin=new Thickness(22) }; stack.Children.Add(new TextBlock { Text="گوینده‌ها را نام‌گذاری کن", FontSize=20, Margin=new Thickness(0,0,0,16) });
         var entries = new Dictionary<string,TextBox>();
         foreach (var speaker in speakers) { stack.Children.Add(new TextBlock { Text="گویندهٔ " + speaker, Margin=new Thickness(0,10,0,6) }); var entry=new TextBox { Text=record.SpeakerNames.TryGetValue(speaker,out var name)?name:"", MaxLength=80 }; stack.Children.Add(entry); entries[speaker]=entry; }
         var save=new Button { Content="ذخیرهٔ نام‌ها", Margin=new Thickness(0,22,0,0), Style=(Style)FindResource("PrimaryButton") }; save.Click += (_,_) => { dialog.DialogResult=true; }; stack.Children.Add(save);
@@ -252,8 +263,19 @@ public partial class WorkspaceWindow : Window
     {
         string action = (AnalysisAction.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "summarize";
         if (CustomPrompt != null) CustomPrompt.Visibility = action == "custom" ? Visibility.Visible : Visibility.Collapsed;
-        if (ready) controller.SelectAnalysis(action);
+        if (ready) { controller.SelectAnalysis(action); UpdateState(); }
     }
+    private string AnalysisActionLabel() => (AnalysisAction.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+    {
+        "summarize"=>"خلاصه کن",
+        "extract_key_points"=>"یافتن نکته‌ها",
+        "to_do_list"=>"ساخت فهرست کارها",
+        "named_entities"=>"یافتن نام‌ها",
+        "summary_per_speaker"=>"خلاصهٔ گوینده‌ها",
+        "speaker_quotation"=>"یافتن نقل‌قول‌ها",
+        "custom"=>"اجرای درخواست",
+        _=>"تحلیل متن"
+    };
     private async void AnalyzeClick(object sender, RoutedEventArgs e)
     {
         var action=(AnalysisAction.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "summarize";
@@ -262,7 +284,21 @@ public partial class WorkspaceWindow : Window
     }
     private void ExportClick(object sender, RoutedEventArgs e) { var button=(Button)sender; button.ContextMenu.PlacementTarget=button; button.ContextMenu.IsOpen=true; }
     private void ExportFormatClick(object sender, RoutedEventArgs e) { if (sender is MenuItem item && item.Tag is string format) controller.ExportSelected(format); }
-    private void DeleteClick(object sender, RoutedEventArgs e) { if (controller.SelectedRecord != null && MessageBox.Show(this,"این یادداشت و فایل ضبط‌شدهٔ محلی آن حذف شود؟","حذف یادداشت",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No) == MessageBoxResult.Yes) controller.DeleteSelected(); }
+    private void DeleteClick(object sender, RoutedEventArgs e)
+    {
+        var record=controller.SelectedRecord; if(record==null) return;
+        string message="این یادداشت از این دستگاه حذف شود؟";
+        if(record.AudioPath is string audioPath)
+        {
+            try
+            {
+                bool owned=Path.GetFullPath(audioPath).StartsWith(Path.GetFullPath(controller.Store.AudioDirectory)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase);
+                message+=owned?"\nفایل صدای ضبط‌شده هم حذف می‌شود.":"\nفایل اصلیِ واردشده حذف نمی‌شود.";
+            }
+            catch(Exception ex) when(ex is ArgumentException or NotSupportedException or PathTooLongException) { }
+        }
+        if(MessageBox.Show(this,message,"حذف یادداشت",MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)==MessageBoxResult.Yes) controller.DeleteSelected();
+    }
     private async void RetryClick(object sender, RoutedEventArgs e) => await controller.RetrySelectedAsync();
     private async void FormatClick(object sender, RoutedEventArgs e) => await controller.FormatSelectedAsync();
     private void AudioClick(object sender, RoutedEventArgs e) => controller.OpenAudioSelected();

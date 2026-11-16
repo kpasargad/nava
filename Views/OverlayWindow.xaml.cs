@@ -103,14 +103,14 @@ public partial class OverlayWindow : Window
         CancelButton.Visibility=Activity || controller.AnalysisBusy?Visibility.Visible:Visibility.Collapsed;
         TranscriptPanel.Visibility=active || !string.IsNullOrWhiteSpace(controller.LiveText)?Visibility.Visible:Visibility.Collapsed;
         ConnectingProgress.Visibility=controller.IsConnecting?Visibility.Visible:Visibility.Collapsed;
-        LiveCaption.Text=controller.IsBusy?"نهایی‌سازی واژه‌های آخر":active?"متن زنده":"آخرین نوشته";
-        LiveConnection.Text=controller.IsConnecting?"در حال اتصال…":controller.IsLiveConnected?"وصل است • زنده":controller.IsRecording?"در حال ضبط":controller.IsBusy?"نهایی‌سازی…":"آماده";
+        LiveCaption.Text=controller.IsBusy?"متن":active?"متن زنده":"آخرین متن";
+        LiveConnection.Text=controller.IsBusy?"در حال آماده‌شدن…":controller.IsConnecting?"در حال اتصال…":controller.IsRecording && controller.IsLiveConnected?"وصل است":controller.IsRecording?"در حال ضبط":"آماده";
         LiveIndicator.Fill=(Brush)FindResource(controller.IsLiveConnected?"Mint":"Coral");
         UpdateTranscriptVisuals();
-        LivePlaceholder.Text=controller.IsConnecting?"دارم وصل می‌شوم؛ صدایت از همین لحظه ضبط می‌شود.":controller.IsLiveConnected?"گوش می‌کنم… صحبت کن تا همین‌جا بنویسم.":controller.IsRecording?"صدایت ضبط می‌شود؛ منتظر اتصال زنده هستم.":"دارم آخرین کلمه‌ها را نهایی می‌کنم…";
+        LivePlaceholder.Text=controller.IsBusy?"در حال تکمیل متن…":controller.IsRecording && controller.IsConnecting?"صدایت ضبط می‌شود؛ متن پس از اتصال ظاهر می‌شود.":controller.IsRecording && controller.IsLiveConnected?"گوش می‌کنم؛ صحبت کن.":controller.IsRecording?"صدایت ضبط می‌شود؛ اتصال زنده برقرار نیست.":controller.IsConnecting?"در حال اتصال…":"میانبر را نگه دار و صحبت کن.";
         ReleaseHint.Visibility=controller.IsRecording?Visibility.Visible:Visibility.Collapsed;
         MiniBadge.Visibility=controller.HasError?Visibility.Visible:Visibility.Collapsed;
-        miniTip.Text=controller.HasError?controller.ErrorMessage+"\nبرای دیدن جزئیات کلیک کن.":controller.IsRecording?"دارم گوش می‌کنم؛ برای پایان میانبر را رها کن.":"نوا • "+controller.HotkeyLabel+" را نگه دار و صحبت کن.\nکلیک: باز کردن • کشیدن: جابه‌جایی";
+        miniTip.Text=controller.HasError?controller.ErrorMessage+"\nبرای دیدن جزئیات کلیک کن.":controller.IsRecording?"گوش می‌کنم؛ برای پایان میانبر را رها کن.":"برای ضبط، "+controller.HotkeyLabel+" را نگه دار و صحبت کن.\nبرای باز کردن نوا کلیک کن؛ برای جابه‌جایی بکش.";
         LayoutPresentation(); RefreshTimers(); RefreshIdleOpacity();
     }
     private void UpdateTranscriptVisuals()

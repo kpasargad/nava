@@ -32,7 +32,7 @@ public partial class App : Application
         bool settings=e.Args.Contains("--settings",StringComparer.OrdinalIgnoreCase),history=e.Args.Contains("--history",StringComparer.OrdinalIgnoreCase);
         if(!first) { (settings?_settingsSignal:history?_historySignal:_activation).Set(); Shutdown(); return; }
         ShutdownMode=ShutdownMode.OnExplicitShutdown;
-        DispatcherUnhandledException+=(_,args)=> { args.Handled=true; ShowError("نوا به مشکلی برخورد کرد. ضبط یا فایل‌های ذخیره‌شده را از تاریخچه بررسی کنید.\n"+SafeMessage(args.Exception),MessageBoxImage.Warning); };
+        DispatcherUnhandledException+=(_,args)=> { args.Handled=true; ShowError("این کار کامل نشد.\n"+SafeMessage(args.Exception),MessageBoxImage.Warning); };
         try
         {
             _controller=new AppController(); _controller.Initialize();
@@ -51,6 +51,6 @@ public partial class App : Application
         if(owner!=null) MessageBox.Show(owner,text,"نوا",MessageBoxButton.OK,image);
         else MessageBox.Show(text,"نوا",MessageBoxButton.OK,image);
     }
-    private static string SafeMessage(Exception e) => e is IOException or UnauthorizedAccessException ? "پوشهٔ برنامه قابل نوشتن نیست. آن را به پوشه‌ای قابل نوشتن منتقل کنید." : "برنامه را دوباره اجرا کنید؛ اگر مشکل باقی ماند، تنظیمات را بررسی کنید.";
+    private static string SafeMessage(Exception e) => e is IOException or UnauthorizedAccessException ? "نوا به فایل‌هایش دسترسی ندارد. فضای دیسک و دسترسی به پوشهٔ نوا را بررسی کن." : "دوباره امتحان کن. اگر تکرار شد، نوا را ببند و دوباره باز کن.";
     protected override void OnExit(ExitEventArgs e) { _wait?.Unregister(null); _shutdownWait?.Unregister(null); _settingsWait?.Unregister(null); _historyWait?.Unregister(null); _controller?.Dispose(); _activation?.Dispose(); _shutdownSignal?.Dispose(); _settingsSignal?.Dispose(); _historySignal?.Dispose(); if(_mutex!=null) { try { _mutex.ReleaseMutex(); } catch(ApplicationException) { } _mutex.Dispose(); } base.OnExit(e); }
 }

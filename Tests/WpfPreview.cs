@@ -58,14 +58,14 @@ public static class WpfPreview
                 sample.Status="recording"; controller.SelectedRecord=sample;
                 State(controller,nameof(AppController.IsRecording),true);
                 State(controller,nameof(AppController.IsConnecting),true);
-                State(controller,nameof(AppController.Status),"دارم وصل می‌شوم…");
-                State(controller,nameof(AppController.Hint),"صحبت کن؛ برای پایان کلید را رها کن");
+                State(controller,nameof(AppController.Status),"در حال اتصال…");
+                State(controller,nameof(AppController.Hint),"صدایت ضبط می‌شود؛ برای پایان رها کن");
                 Render(overlay,hosts,overlay.Width,overlay.Height,Path.Combine(output,"overlay-connecting-preview.png"));
                 Render(workspace,hosts,990,760,Path.Combine(output,"workspace-connecting-preview.png"));
                 State(controller,nameof(AppController.IsConnecting),false);
                 State(controller,nameof(AppController.IsLiveConnected),true);
-                State(controller,nameof(AppController.Status),"دارم گوش می‌کنم…");
-                State(controller,nameof(AppController.Hint),"برای پایان، NumLock را رها کن");
+                State(controller,nameof(AppController.Status),"دارم می‌نویسم");
+                State(controller,nameof(AppController.Hint),"برای پایان، میانبر یا دکمه را رها کن");
                 State(controller,nameof(AppController.Level),.48);
                 State(controller,nameof(AppController.TimeLabel),"00:18");
                 State(controller,nameof(AppController.FinalText),"سلام! امروز دربارهٔ نسخهٔ تازه صحبت می‌کنیم. ");
@@ -80,8 +80,8 @@ public static class WpfPreview
                 State(controller,nameof(AppController.LiveText),sample.Text);
                 sample.Status="completed"; controller.SelectedRecord=sample;
                 State(controller,nameof(AppController.Level),0d);
-                State(controller,nameof(AppController.Status),"نوشتم؛ آماده‌ست!");
-                State(controller,nameof(AppController.Hint),"متن در تاریخچه ذخیره شد");
+                State(controller,nameof(AppController.Status),"متن آماده است");
+                State(controller,nameof(AppController.Hint),"در یادداشت‌ها ذخیره شد");
                 Render(overlay,hosts,overlay.Width,overlay.Height,Path.Combine(output,"overlay-completed-preview.png"));
                 overlay.Collapse();
                 Render(overlay,hosts,overlay.Width,overlay.Height,Path.Combine(output,"overlay-completed-mini-preview.png"));
@@ -89,6 +89,13 @@ public static class WpfPreview
                 workspace.ShowTab("history");
                 Render(workspace,hosts,990,760,Path.Combine(output,"workspace-preview.png"));
                 Render(workspace,hosts,780,620,Path.Combine(output,"workspace-minimum-preview.png"));
+                if(workspace.FindName("SearchBox") is TextBox search)
+                {
+                    search.Text="no-matching-synthetic-note";
+                    Render(workspace,hosts,780,620,Path.Combine(output,"workspace-search-empty-preview.png"));
+                    search.Clear();
+                    controller.SelectedRecord=sample;
+                }
                 ClickLocalTab(workspace,"EditNav");
                 Render(workspace,hosts,780,620,Path.Combine(output,"workspace-editor-preview.png"));
                 ClickLocalTab(workspace,"SegmentsNav");
@@ -104,6 +111,8 @@ public static class WpfPreview
                 if (workspace.FindName("SettingsPanel") is ScrollViewer settingsScroll) settingsScroll.ScrollToBottom();
                 Render(workspace,hosts,990,760,Path.Combine(output,"settings-bottom-preview.png"));
                 workspace.ShowTab("history"); controller.SelectedRecord=null; controller.Records.Clear();
+                State(controller,nameof(AppController.Status),"آماده‌ام");
+                State(controller,nameof(AppController.Hint),"میانبر را نگه دار و صحبت کن");
                 Render(workspace,hosts,990,760,Path.Combine(output,"workspace-empty-preview.png"));
                 File.WriteAllText(Path.Combine(output,"visual-smoke.txt"),"Own-control WPF RenderTargetBitmap previews completed. Synthetic records only. No Window.Show, Application.Run, desktop capture, recording, network requests, hotkey registration or startup changes.\n");
             }
@@ -164,8 +173,8 @@ public static class WpfPreview
         var paper=new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0F2EB"));
         var muted=new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A7B8BF"));
         var content=new Grid(); content.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto }); content.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto }); content.RowDefinitions.Add(new RowDefinition());
-        content.Children.Add(new TextBlock { Text="همراه‌های نوا", Foreground=paper, FontFamily=new FontFamily("Segoe UI"), FontSize=25, FontWeight=FontWeights.SemiBold, FlowDirection=FlowDirection.RightToLeft });
-        var subtitle=new TextBlock { Text="ده چهرهٔ کوچک؛ پیش‌نمایش در اندازهٔ ۴۸ و ۲۸ پیکسل", Foreground=muted, FontSize=13, Margin=new Thickness(0,9,0,22), FlowDirection=FlowDirection.RightToLeft }; Grid.SetRow(subtitle,1); content.Children.Add(subtitle);
+        content.Children.Add(new TextBlock { Text="چهره‌های نوا", Foreground=paper, FontFamily=new FontFamily("Segoe UI"), FontSize=25, FontWeight=FontWeights.SemiBold, FlowDirection=FlowDirection.RightToLeft });
+        var subtitle=new TextBlock { Text="ده چهره برای نوا، در دو اندازه", Foreground=muted, FontSize=13, Margin=new Thickness(0,9,0,22), FlowDirection=FlowDirection.RightToLeft }; Grid.SetRow(subtitle,1); content.Children.Add(subtitle);
         var cards=new System.Windows.Controls.Primitives.UniformGrid { Columns=5,Rows=2,FlowDirection=FlowDirection.RightToLeft }; Grid.SetRow(cards,2); content.Children.Add(cards);
         foreach(var character in CharacterCatalog.All)
         {

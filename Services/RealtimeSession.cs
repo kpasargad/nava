@@ -89,7 +89,7 @@ public sealed class RealtimeSession : IAsyncDisposable
             if (!_finished.Task.IsCompleted) await SendAsync(Array.Empty<byte>(), WebSocketMessageType.Text, linked.Token);
         }
         try { return await _finished.Task.WaitAsync(TimeSpan.FromSeconds(50), linked.Token); }
-        catch (TimeoutException) { throw new ServiceException("پاسخ نهایی اتصال زنده نرسید. فایل ضبط‌شده محفوظ است."); }
+        catch (TimeoutException) { throw new ServiceException("تکمیل متن طول کشید. اتصال را بررسی کن و دوباره امتحان کن."); }
     }
 
     private async Task SendAsync(byte[] bytes, WebSocketMessageType type, CancellationToken ct)
@@ -100,13 +100,13 @@ public sealed class RealtimeSession : IAsyncDisposable
         try
         {
             await _sendLock.WaitAsync(linked.Token); entered=true;
-            if (_socket.State != WebSocketState.Open) throw new ServiceException("اتصال زنده قطع شد. فایل ضبط‌شده محفوظ است.");
+            if (_socket.State != WebSocketState.Open) throw new ServiceException("اتصال متن زنده قطع شد. اتصال اینترنت را بررسی کن.");
             await _socket.SendAsync(new ArraySegment<byte>(bytes), type, true, linked.Token);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested && !_lifetimeToken.IsCancellationRequested)
         {
             _socket.Abort();
-            var error = new ServiceException("ارسال صدا به سرویس طول کشید. فایل ضبط‌شده برای تلاش دوباره محفوظ است.");
+            var error = new ServiceException("فرستادن صدا طول کشید. اتصال را بررسی کن و دوباره امتحان کن.");
             _finished.TrySetException(error); throw error;
         }
         finally { if (entered) _sendLock.Release(); }
@@ -123,7 +123,7 @@ public sealed class RealtimeSession : IAsyncDisposable
             }
         }
         catch (OperationCanceledException) { }
-        catch { _finished.TrySetException(new ServiceException("اتصال زنده قطع شد. فایل ضبط‌شده محفوظ است.")); }
+        catch { _finished.TrySetException(new ServiceException("اتصال متن زنده قطع شد. اتصال اینترنت را بررسی کن.")); }
     }
 
     private async Task ReceiveAsync()
@@ -138,9 +138,9 @@ public sealed class RealtimeSession : IAsyncDisposable
                 do
                 {
                     received = await _socket.ReceiveAsync(new ArraySegment<byte>(buffer), _lifetimeToken);
-                    if (received.MessageType == WebSocketMessageType.Close) throw new ServiceException("اتصال زنده پیش از دریافت متن نهایی بسته شد.");
+                    if (received.MessageType == WebSocketMessageType.Close) throw new ServiceException("اتصال پیش از تکمیل متن قطع شد. دوباره امتحان کن.");
                     message.Write(buffer, 0, received.Count);
-                    if (message.Length > 8 * 1024 * 1024) throw new ServiceException("پاسخ اتصال زنده بیش از حد بزرگ بود.");
+                    if (message.Length > 8 * 1024 * 1024) throw new ServiceException("متن دریافتی بیش از حد طولانی بود. ضبط کوتاه‌تری را امتحان کن.");
                 } while (!received.EndOfMessage);
                 if (received.MessageType != WebSocketMessageType.Text) continue;
                 using var json = JsonDocument.Parse(message.ToArray());
@@ -179,7 +179,7 @@ public sealed class RealtimeSession : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_lifetimeToken.IsCancellationRequested) { _finished.TrySetCanceled(_lifetimeToken); }
         catch (ServiceException ex) { _finished.TrySetException(ex); }
-        catch { _finished.TrySetException(new ServiceException("اتصال زنده قطع شد. فایل ضبط‌شده برای بازیابی محفوظ است.")); }
+        catch { _finished.TrySetException(new ServiceException("دریافت متن زنده کامل نشد. دوباره امتحان کن.")); }
     }
     private static TranscriptSegment Clone(TranscriptSegment x) => new() { Text = x.Text, StartMs = x.StartMs, EndMs = x.EndMs, Speaker = x.Speaker, Language = x.Language };
 
@@ -198,7 +198,7 @@ public sealed class RealtimeSession : IAsyncDisposable
         raw = Regex.Replace(raw, @"[A-Za-z0-9_+./:=~\-]{24,}", "[redacted]");
         raw = Regex.Replace(raw, @"[\r\n\t]+", " ");
         if (raw.Length > 320) raw = raw[..320] + "…";
-        message = "خطای سرویس زنده: " + raw + "\nفایل ضبط‌شده برای بازیابی محفوظ است.";
+        message = "دریافت متن زنده کامل نشد. تنظیمات اتصال را بررسی کن.\nجزئیات: " + raw;
         return true;
     }
 
